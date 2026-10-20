@@ -172,10 +172,22 @@ static void prueba_simular(void)
         cJSON *series;
         AFIRMAR(resumen != NULL, "falta 'resumen'");
         if (resumen != NULL) {
+            /* Cada métrica viene como {valor, ic95}: el intervalo va dentro
+             * del objeto, no en un campo plano aparte. */
             v = cJSON_GetObjectItemCaseSensitive(resumen, "tpr_medio");
-            AFIRMAR(v != NULL && cJSON_IsNumber(v), "falta 'tpr_medio'");
-            v = cJSON_GetObjectItemCaseSensitive(resumen, "tpr_medio_ic95");
-            AFIRMAR(v != NULL && cJSON_IsNumber(v), "falta el IC de 'tpr_medio'");
+            AFIRMAR(v != NULL && cJSON_IsObject(v), "falta 'tpr_medio'");
+            if (v != NULL && cJSON_IsObject(v)) {
+                const cJSON *valor = cJSON_GetObjectItemCaseSensitive(v, "valor");
+                const cJSON *ic = cJSON_GetObjectItemCaseSensitive(v, "ic95");
+                AFIRMAR(valor != NULL && cJSON_IsNumber(valor),
+                        "falta 'valor' dentro de 'tpr_medio'");
+                AFIRMAR(ic != NULL && cJSON_IsNumber(ic),
+                        "falta 'ic95' dentro de 'tpr_medio'");
+            }
+            /* El formato plano NO debe seguir existiendo: si aparece, el
+             * contrato se rompió. */
+            AFIRMAR(cJSON_GetObjectItemCaseSensitive(resumen, "tpr_medio_ic95") == NULL,
+                    "el formato plano 'tpr_medio_ic95' no debe existir");
         }
         AFIRMAR(cJSON_GetObjectItemCaseSensitive(json, "validacion") != NULL,
                 "falta 'validacion'");
