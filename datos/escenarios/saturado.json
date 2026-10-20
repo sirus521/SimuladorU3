@@ -1,0 +1,22 @@
+{
+  "nombre": "saturado",
+  "semilla": 2026,
+  "dias": 30,
+  "dias_calentamiento": 10,
+  "replicas": 30,
+  "llegadas_por_dia": 24,
+  "bahias_diagnostico": 1,
+  "mecanicos": 2,
+  "refacciones_stock": 40,
+  "refacciones_lote": 40,
+  "refacciones_periodo_h": 48,
+  "presupuesto_aceptacion": 0.85,
+  "presupuesto_decision_h": 0.5,
+  "hora_apertura": 9,
+  "hora_cierre": 18,
+  "tipos": [
+    { "peso": 0.40, "media_diagnostico_h": 0.5, "media_reparacion_h": 2.0, "refacciones": 1 },
+    { "peso": 0.40, "media_diagnostico_h": 0.8, "media_reparacion_h": 3.5, "refacciones": 1 },
+    { "peso": 0.20, "media_diagnostico_h": 1.2, "media_reparacion_h": 6.0, "refacciones": 2 }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "nombre": "validacion-mmc",
+  "semilla": 2026,
+  "dias": 90,
+  "dias_calentamiento": 30,
+  "replicas": 40,
+  "llegadas_por_dia": 20,
+  "bahias_diagnostico": 2,
+  "mecanicos": 3,
+  "refacciones_stock": 100000,
+  "refacciones_lote": 0,
+  "refacciones_periodo_h": 48,
+  "presupuesto_aceptacion": 0.85,
+  "presupuesto_decision_h": 0.5,
+  "hora_apertura": 0,
+  "hora_cierre": 24,
+  "tipos": [
+    { "peso": 1.0, "media_diagnostico_h": 0.76, "media_reparacion_h": 3.4, "refacciones": 1 }
+  ]
+}

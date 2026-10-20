@@ -1,0 +1,25 @@
+# Artefactos de compilación
+build/
+bin/
+*.o
+*.so
+
+# Interfaz web
+web/node_modules/
+web/dist/
+web/.vite/
+*.tsbuildinfo
+
+# Resultados generados
+resultado*.json
+salida*.json
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Editores
+.vscode/
+.idea/
