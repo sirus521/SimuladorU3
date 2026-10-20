@@ -1,8 +1,112 @@
-// tipos.ts — Contrato con la API del servidor C.
+// tipos.ts — Contrato con la API de partida (C) y tipos del cliente.
 //
-// Esta forma la congela la fase F5 (ver notas/05-plan-de-trabajo.md). Si
-// cambia una clave en el servidor, hay que cambiarla aquí y en
-// servidor/rutas.c, y actualizar la nota de la API.
+// La forma de estos tipos la fija el servidor C (servidor/rutas_juego.c).
+// Si se cambia una clave allí, hay que cambiarla aquí.
+
+/** Puestos del taller, en el mismo orden que el enum de C. */
+export const enum Puesto {
+  Recepcion = 0,
+  Diagnostico = 1,
+  Cotizacion = 2,
+  Almacen = 3,
+  Reparacion = 4,
+  Entrega = 5,
+}
+
+/** Estados de un vehículo, en el mismo orden que el enum de C. */
+export const enum EstadoVehiculo {
+  EsperaRecepcion = 0,
+  EnRecepcion = 1,
+  EsperaDiagnostico = 2,
+  EnDiagnostico = 3,
+  EsperaCotizacion = 4,
+  EnCotizacion = 5,
+  EsperaAlmacen = 6,
+  EnAlmacen = 7,
+  EsperaReparacion = 8,
+  EnReparacion = 9,
+  EsperaEntrega = 10,
+  EnEntrega = 11,
+  Entregado = 12,
+  Rechazado = 13,
+  Ido = 14,
+}
+
+export interface Vehiculo {
+  id: number;
+  tipo: number;
+  estado: EstadoVehiculo;
+  t_llegada: number;
+  /** Horas que lleva en el sistema. */
+  espera: number;
+  /** Disposición a pagar del cliente. */
+  disposicion: number;
+  precio_ofrecido: number;
+  /** Horas que lleva esperando en la cola actual. */
+  en_espera: number;
+}
+
+export interface Empleado {
+  id: number;
+  tipo: number;
+  puesto: number;
+  ocupado: number;
+}
+
+export interface Colas {
+  recepcion: number;
+  diagnostico: number;
+  cotizacion: number;
+  almacen: number;
+  reparacion: number;
+  entrega: number;
+}
+
+export interface DiaHistorial {
+  dia: number;
+  entregas: number;
+  cuota: number;
+  cumplio_cuota: number;
+  clientes_perdidos: number;
+  ingresos: number;
+  gastos: number;
+  saldo: number;
+  reputacion: number;
+  espera_media_rep: number;
+}
+
+export interface EstadoPartida {
+  dia: number;
+  t_actual: number;
+  saldo: number;
+  ingresos_dia: number;
+  gastos_dia: number;
+  reputacion: number;
+  cuota: number;
+  entregas_dia: number;
+  perdidos_dia: number;
+  stock_refacciones: number;
+  lote_en_camino: number;
+  jugador_puesto: number;
+  jugador_vehiculo: number;
+  terminada: number;
+  ganada: number;
+  motivo: string;
+  semilla: number;
+  colas: Colas;
+  vehiculos: Vehiculo[];
+  empleados: Empleado[];
+  historial: DiaHistorial[];
+}
+
+export interface RespuestaAccion {
+  aceptada: number;
+  estado: EstadoPartida;
+}
+
+/* ------------------------------------------------------------------ */
+/* Contrato de la API de análisis (motor de simulación clásico)          */
+/* ------------------------------------------------------------------ */
 
 export interface Parametros {
   nombre: string;
@@ -109,8 +213,4 @@ export interface RespuestaSimulacion {
   histograma: Histograma;
   por_tipo: ResultadoTipo[];
   avisos?: string;
-}
-
-export interface EscenarioDisponible {
-  archivo: string;
 }
