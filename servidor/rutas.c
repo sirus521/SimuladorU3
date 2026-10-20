@@ -14,6 +14,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "rutas.h"
+#include "rutas_juego.h"
 #include "http.h"
 
 #include <dirent.h>
@@ -269,6 +270,11 @@ int rutas_atender(int fd, const char *raiz_web, const char *metodo,
             return http_responder_error(fd, 405, "solo se admite POST");
         }
         return endpoint_simular(fd, cuerpo, longitud_cuerpo);
+    }
+
+    /* La API de partida tiene su propio dispatcher. */
+    if (strncmp(ruta, "/api/partida", 12) == 0) {
+        return rutas_juego_atender(fd, metodo, ruta, cuerpo, longitud_cuerpo);
     }
 
     if (strncmp(ruta, "/api/", 5) == 0) {
