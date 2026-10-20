@@ -3,12 +3,16 @@ tipo: indice
 proyecto: Simulador de Taller de Reparación
 materia: Simulación
 unidad: 3
+repositorio: https://github.com/sirus521/SimuladorU3
 ---
 
 # Simulador de Taller de Reparación
 
 Tablero de control del proyecto. Cada nota responde una pregunta concreta y
 está numerada para leerse en orden.
+
+**Repositorio:** <https://github.com/sirus521/SimuladorU3>
+**En el vault:** `TecNM/SimuladorU3/` (enlace simbólico al repo)
 
 ## Documentos que pide el profesor
 
@@ -47,11 +51,26 @@ está numerada para leerse en orden.
 
 ## Estado actual
 
-- [x] F0 — Cimientos, repo, vault de Obsidian
-- [x] F1 — PRNG (LCG propio) con prueba áurea
-- [x] F2 — Distribuciones de probabilidad
-- [x] F3 — Motor de eventos discretos + modelo del taller
-- [x] F4 — Estadísticas, réplicas y validación contra teoría
-- [x] F5 — Servidor HTTP en C
-- [x] F6 — Interfaz web
-- [x] F7 — Reporte y entrega
+Todas las fases cerradas. Criterios cumplidos:
+
+| Fase | Criterio | Estado |
+|---|---|---|
+| F0 | Cimientos, repo, vault de Obsidian, notas 00–04 | ✅ |
+| F1 | PRNG: 12 filas de cada tabla áurea, periodo 65536, dado uniforme | ✅ |
+| F2 | Distribuciones: chi-cuadrado y Kolmogorov-Smirnov | ✅ |
+| F3 | Motor de eventos discretos: reproducibilidad e invariantes | ✅ |
+| F4 | Estadísticas y validación contra M/M/c (error 0.20 %) | ✅ |
+| F5 | Servidor HTTP: contrato de la API verificado con `curl` | ✅ |
+| F6 | Interfaz web: build limpio, 8 pruebas, smoke en navegador | ✅ |
+| F7 | Reporte y entrega | ✅ |
+
+**Pruebas:** 1 356 797 comprobaciones en C, todas en verde.
+**Resultados:** ver [[08-reporte]].
+
+## Cómo se trabaja aquí
+
+- Las notas son la **especificación**: el código las implementa, no al revés.
+- Cada fase tiene un criterio de aceptación y termina en un commit.
+- Los números del reporte se citan de `make test` y del CLI, no de memoria.
+- Ver [[05-plan-de-trabajo]] para el método y [[06-bitacora-y-decisiones]]
+  para las decisiones.

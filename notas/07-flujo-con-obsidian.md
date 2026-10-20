@@ -18,27 +18,37 @@ vivieran aparte, el reporte y el código se desincronizan sin que nadie lo note.
 
 ## Abrir el proyecto en Obsidian
 
-### Opción A — el repo como vault (recomendada)
+### Opción A — desde el vault personal (ya configurada)
 
-1. En Obsidian: **Abrir carpeta como vault**.
-2. Elegir la carpeta `SimuladorU3/`.
+El vault principal está en `~/Documents/Obsidian Vault`. El proyecto ya está
+enlazado desde ahí:
 
-Resultado: aparece `notas/` en el explorador, con los enlaces `[[...]]`
-funcionando entre notas.
+```
+~/Documents/Obsidian Vault/TecNM/SimuladorU3
+    -> ~/Workspace/TecNM/Workspace/Simulacion/SimuladorU3
+```
 
-### Opción B — desde el vault personal
+Las notas aparecen dentro de la carpeta **TecNM**, junto a las de las otras
+materias, y se pueden enlazar entre ellas con `[[...]]`.
 
-El vault principal está en `~/Documents/Obsidian Vault`. Si se quiere ver este
-proyecto junto a las demás notas de TecNM, se crea un enlace simbólico:
+**Para recrear el enlace** (por ejemplo, en otra máquina):
 
 ```bash
 ln -s ~/Workspace/TecNM/Workspace/Simulacion/SimuladorU3 \
       ~/Documents/Obsidian\ Vault/TecNM/SimuladorU3
 ```
 
-**Atención:** con esta opción, si además se abre el repo como vault (opción A),
-Obsidian ve los mismos archivos dos veces y los duplica en el índice. Usa **una
-de las dos**, no las dos.
+**Atención:** con esta opción, si además se abre el repo como vault (opción
+B), Obsidian ve los mismos archivos dos veces y los duplica en el índice. Usa
+**una de las dos**, no las dos.
+
+### Opción B — el repo como vault
+
+1. En Obsidian: **Abrir carpeta como vault**.
+2. Elegir la carpeta `SimuladorU3/`.
+
+Resultado: las notas aparecen en la raíz del vault. Es la opción útil si
+trabajas con el repo aislado y no quieres ver el resto de tus notas.
 
 ## Convención de nombres
 
