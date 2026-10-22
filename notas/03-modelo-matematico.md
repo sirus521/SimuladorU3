@@ -212,7 +212,38 @@ conceptos del parte. Ese historial es el entregable de simulación de la
 partida: sirve para comparar dos partidas, para ver el efecto de contratar,
 y para el reporte.
 
-## 6. La validación del modelo (se conserva)
+## 6. La escala de tiempos del juego
+
+El juego usa **su propia escala de tiempos**, más corta que la del modelo
+analítico. La razón es práctica y no de gusto:
+
+- Un turno de 9 h de juego dura unos minutos reales (a velocidad ×1, un día
+  de juego son unos 9 minutos; a ×4, unos 2 minutos y cuarto).
+- El jugador tiene que **sentir** el reloj sin aburrirse. Ninguna acción
+  debe tardar más de ~20 segundos reales.
+- Con los tiempos del modelo analítico (2 a 6 h de reparación), un turno de
+  9 h no daba ni para 5 trabajos y la cuota era **inalcanzable por
+  construcción**: no sería un juego difícil, sería un juego imposible.
+
+| Magnitud | Modelo analítico | Juego |
+|---|---|---|
+| Diagnóstico (eléctrico / mecánico / carrocería) | 0.5 / 0.8 / 1.2 h | 0.20 / 0.30 / 0.45 h |
+| Reparación (eléctrico / mecánico / carrocería) | 2.0 / 3.5 / 6.0 h | 0.80 / 1.30 / 2.20 h |
+| Recepción, cotización, almacén, entrega | 0.1 h | 0.10 h |
+| Duración del día de juego | 24 h | 9 h de atención |
+
+**Lo que no cambia** es la estructura del modelo: las colas, los recursos
+compartidos entre el jugador y los NPCs, el cuello de botella, la relación
+L = λW y la realimentación de la reputación sobre la demanda. Lo que cambia
+es la escala, que es un parámetro de presentación, no del modelo conceptual.
+
+Por eso la comparación contra M/M/c (sección siguiente) se hace sobre el
+**modelo analítico**, no sobre el del juego: con servicio determinista por
+tipo de avería y llegadas restringidas a la ventana de atención, el
+subsistema de diagnóstico del juego no es un M/M/c exacto y la comparación
+sería engañosa.
+
+## 7. La validación del modelo (se conserva)
 
 El modelo de **diagnóstico** sigue siendo comparable con un M/M/c cuando el
 servicio es exponencial. En el juego el tiempo de servicio es **determinista
@@ -229,7 +260,7 @@ coincidiendo con la solución analítica dentro del 0.5 %.
 > reflejar la realidad del taller, y eso es justo lo que la asignatura pide
 > evitar.
 
-## 7. Supuestos del modelo matemático
+## 8. Supuestos del modelo matemático
 
 | # | Supuesto | Justificación | Riesgo si es falso |
 |---|---|---|---|
