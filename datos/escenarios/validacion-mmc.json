@@ -15,6 +15,11 @@
   "hora_apertura": 0,
   "hora_cierre": 24,
   "tipos": [
-    { "peso": 1.0, "media_diagnostico_h": 0.76, "media_reparacion_h": 3.4, "refacciones": 1 }
+    {
+      "peso": 1.0,
+      "media_diagnostico_h": 0.76,
+      "media_reparacion_h": 3.4,
+      "refacciones": 1
+    }
   ]
 }

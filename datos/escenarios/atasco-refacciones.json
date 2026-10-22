@@ -4,7 +4,7 @@
   "dias": 30,
   "dias_calentamiento": 10,
   "replicas": 30,
-  "llegadas_por_dia": 18,
+  "llegadas_por_dia": 14,
   "bahias_diagnostico": 2,
   "mecanicos": 3,
   "refacciones_stock": 4,
@@ -15,8 +15,23 @@
   "hora_apertura": 9,
   "hora_cierre": 18,
   "tipos": [
-    { "peso": 0.40, "media_diagnostico_h": 0.5, "media_reparacion_h": 2.0, "refacciones": 1 },
-    { "peso": 0.40, "media_diagnostico_h": 0.8, "media_reparacion_h": 3.5, "refacciones": 1 },
-    { "peso": 0.20, "media_diagnostico_h": 1.2, "media_reparacion_h": 6.0, "refacciones": 2 }
+    {
+      "peso": 0.4,
+      "media_diagnostico_h": 0.5,
+      "media_reparacion_h": 2.0,
+      "refacciones": 1
+    },
+    {
+      "peso": 0.4,
+      "media_diagnostico_h": 0.8,
+      "media_reparacion_h": 3.5,
+      "refacciones": 1
+    },
+    {
+      "peso": 0.2,
+      "media_diagnostico_h": 1.2,
+      "media_reparacion_h": 6.0,
+      "refacciones": 2
+    }
   ]
 }

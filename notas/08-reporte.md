@@ -29,16 +29,16 @@ la parte que se valida contra la teoría) para el escenario de referencia:
 
 | Métrica | Valor | IC 95 % |
 |---|---|---|
-| TPR medio | 9.285 h | ± 0.819 |
-| TPR percentil 90 | 18.237 h | ± 1.673 |
-| OT entregadas por día | 15.042 | ± 0.258 |
-| Presupuestos rechazados | 14.97 % | ± 0.80 |
-| Bloqueo por refacciones | 6.77 % | ± 2.21 |
-| Utilización diagnóstico | 28.02 % | ± 0.82 |
-| Utilización reparación | **69.84 %** | ± 1.92 |
+| TPR medio | 6.976 h | ± 0.294 |
+| TPR percentil 90 | 13.964 h | ± 0.779 |
+| OT entregadas por día | 12.022 | ± 0.328 |
+| Presupuestos rechazados | 14.97 % | ± 0.77 |
+| Bloqueo por refacciones | 0.00 % | ± 0.00 |
+| Utilización diagnóstico | 22.88 % | ± 0.75 |
+| Utilización reparación | **56.39 %** | ± 1.84 |
 
-La **reparación** es el cuello de botella, con casi el 70 % de utilización
-contra el 28 % del diagnóstico.
+La **reparación** es el cuello de botella, con 56.4 % de utilización contra
+el 22.9 % del diagnóstico.
 
 **Verificación contra la solución analítica.** En el escenario donde el
 subsistema de diagnóstico es un M/M/c exacto, el motor coincide con
@@ -158,7 +158,7 @@ En el escenario base la comparación contra M/M/c es **aproximada**, y la
 interfaz lo dice explícitamente. Hay dos razones: las llegadas se concentran
 en la ventana de atención (no son estacionarias) y el servicio es una mezcla
 de exponenciales (tres tipos de avería), no una exponencial pura. Por eso el
-error aparente en W es de 52 % en el escenario base y de 0.20 % en el de
+error aparente en W es de 36 % en el escenario base y de 0.20 % en el de
 validación.
 
 ### 4.3 Otras pruebas
@@ -181,16 +181,16 @@ validación.
 
 | Métrica | Valor | IC 95 % |
 |---|---|---|
-| TPR medio | 9.285 h | ± 0.819 |
-| TPR percentil 90 | 18.237 h | ± 1.673 |
-| OT entregadas por día | 15.042 | ± 0.258 |
-| Presupuestos rechazados | 14.97 % | ± 0.80 |
-| Bloqueo por refacciones | 6.77 % | ± 2.21 |
-| Ociosidad del taller | 12.74 % | ± 1.34 |
-| Utilización diagnóstico | 28.02 % | ± 0.82 |
-| Utilización reparación | 69.84 % | ± 1.92 |
-| Cola media diagnóstico | 0.365 | ± 0.037 |
-| Cola media reparación | 2.315 | ± 0.395 |
+| TPR medio | 6.976 h | ± 0.294 |
+| TPR percentil 90 | 13.964 h | ± 0.779 |
+| OT entregadas por día | 12.022 | ± 0.328 |
+| Presupuestos rechazados | 14.97 % | ± 0.77 |
+| Bloqueo por refacciones | 0.00 % | ± 0.00 |
+| Ociosidad del taller | 21.00 % | ± 1.39 |
+| Utilización diagnóstico | 22.88 % | ± 0.75 |
+| Utilización reparación | 56.39 % | ± 1.84 |
+| Cola media diagnóstico | 0.182 | ± 0.022 |
+| Cola media reparación | 1.002 | ± 0.116 |
 | Estado estacionario | sí (deriva 1.00 %) | |
 
 ### 5.2 El juego, con partidas completas
@@ -207,13 +207,25 @@ La pérdida con el equipo mínimo no es por falta de producción, sino por
 almacén el taller se para a mitad de partida. Es exactamente la decisión que
 el juego quiere que el jugador tome.
 
-### 5.3 El escenario de atasco de refacciones
+### 5.3 El escenario saturado
 
 | Métrica | Valor |
 |---|---|
-| Bloqueo por refacción | 85.03 % |
-| Utilización reparación | 2.21 % |
-| TPR medio | 408.7 h |
+| Utilización reparación | 99.32 % |
+| TPR medio | 64.6 h |
+| Estado estacionario | no (deriva alta) |
+
+Con un mecánico menos y la misma demanda, la cola de reparación crece sin
+límite: la utilización se pega al 100 % y el TPR se dispara. El simulador lo
+avisa con el diagnóstico de estado estacionario.
+
+### 5.4 El escenario de atasco de refacciones
+
+| Métrica | Valor |
+|---|---|
+| Bloqueo por refacción | 84.77 % |
+| Utilización reparación | 2.18 % |
+| TPR medio | 403.5 h |
 
 El resultado más ilustrativo: **el taller está ocioso el 97.8 % del tiempo y
 aun así no entrega vehículos**. Mecánicos sin trabajo, vehículos parados y el
