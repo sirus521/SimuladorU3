@@ -1,30 +1,38 @@
 # SOTR — Simulador de Taller de Reparación
 
-Simulador de eventos discretos de un taller de reparación. El motor de
-simulación está escrito en **C** y la interfaz es una aplicación **web**
-(React + Vite + Tailwind) que consume la API del propio servidor en C.
+**Videojuego de simulación en primera persona** de un taller de reparación.
+El motor de eventos discretos está escrito en **C** y es autoritativo: el
+navegador no simula nada, sólo manda acciones y dibuja el estado que le
+devuelve el servidor.
 
 > **Materia:** Simulación · **Unidad:** 3
 > **Documentación:** las notas de Obsidian están en [`notas/`](notas/00-index.md)
 
 ---
 
-## Qué responde
+## Qué se hace aquí
 
-Para un taller de tamaño configurable, estima:
+El jugador **ocupa los puestos** del taller —recibe, diagnostica, cotiza,
+compone refacciones, repara y entrega— y puede contratar personal que haga lo
+mismo. El objetivo es **sobrevivir 30 días cumpliendo una cuota diaria de
+trabajos entregados**, sin quebrar y sin perder la reputación.
 
-| Pregunta | Métrica |
+| | |
 |---|---|
-| ¿Cuánto tarda un vehículo en salir? | TPR medio y percentil 90 |
-| ¿Cuánto cierro al día? | OT entregadas por día |
-| ¿Estoy saturado? | Utilización de bahías y mecánicos |
-| ¿El cuello de botella es la gente o el almacén? | % de bloqueo por refacciones |
+| **Motor** | C17, eventos discretos, sin dependencias |
+| **Servidor** | HTTP/1.1 sobre sockets POSIX, un hilo por conexión |
+| **Interfaz** | React 19 + Three.js (R3F) + Tailwind 4, 60 fps |
+| **Aleatoriedad** | PRNG propio: LCG de 16 bits, periodo máximo 65536 |
 
-Cada cifra se publica **con su intervalo de confianza al 95 %**, sobre 30
-réplicas independientes. Una simulación sin incertidumbre no es un resultado,
-es una cifra con suerte.
+## Dos vistas
 
----
+| Vista | Qué es | Para qué |
+|---|---|---|
+| **Juego** | Primera persona, con el jugador en los puestos | La entrega |
+| **Análisis** | El mismo motor por lotes, con intervalos de confianza | Validar el modelo contra la teoría |
+
+Ambas comparten el motor de eventos discretos: el del juego es el mismo con
+las decisiones del jugador; el del análisis es el mismo sin jugador.
 
 ## Correr
 
@@ -37,30 +45,56 @@ make run        # levanta todo en http://127.0.0.1:8080
 Para desarrollar la interfaz con recarga en caliente:
 
 ```bash
-make dev        # terminal 1: servidor C en :8080
-cd web && npm run dev   # terminal 2: Vite en :5173 (hace proxy a /8080)
+make dev                          # terminal 1: servidor C en :8080
+cd web && npm run dev             # terminal 2: Vite en :5173 (proxy a :8080)
 ```
 
 ## Probar
 
 ```bash
-make test       # pruebas en C (PRNG, distribuciones, modelo, analítico, HTTP)
+make test       # pruebas en C: PRNG, distribuciones, motor, analítico, HTTP, juego
 make test-web   # pruebas de la interfaz (node:test)
 ```
 
-Salida esperada de `make test`:
+| Suite | Qué cubre |
+|---|---|
+| `test_prng` | Las tablas áurea del PRNG, el periodo y la uniformidad del dado |
+| `test_distrib` | Chi-cuadrado y Kolmogorov-Smirnov de las distribuciones |
+| `test_analitico` | La solución M/M/c contra Erlang-C y contra M/M/1 |
+| `test_modelo` | Reproducibilidad e invariantes del motor de análisis |
+| `test_http` | El contrato de la API y los casos borde del servidor |
+| `test_juego` | El motor de partida: reloj, trabajo, economía |
+| `test_juego_npc` | Los NPCs, el reparto del trabajo y el balance del juego |
+| `test_juego_http` | El contrato de la API de partida |
+
+Salida de `make test`:
 
 ```
 == Pruebas del simulador ==
--- build/test_analitico    OK  analitico (25 comprobaciones)
--- build/test_distrib      OK  distrib (400011 comprobaciones)
--- build/test_http         OK  http (40 comprobaciones)
--- build/test_modelo       OK  modelo (35 comprobaciones)
--- build/test_prng         OK  prng (85684 comprobaciones)
+-- build/test_analitico   OK  analitico (25 comprobaciones)
+-- build/test_distrib     OK  distrib (400011 comprobaciones)
+-- build/test_http        OK  http (42 comprobaciones)
+-- build/test_juego       OK  juego (53 comprobaciones)
+-- build/test_juego_http  OK  juego-http (22 comprobaciones)
+-- build/test_juego_npc   OK  juego-npc (32 comprobaciones)
+-- build/test_modelo      OK  modelo (35 comprobaciones)
+-- build/test_prng        OK  prng (85684 comprobaciones)
 == Todas las pruebas en C pasaron ==
 ```
 
-## Usar el CLI
+## Controles del juego
+
+| Tecla | Qué hace |
+|---|---|
+| **W A S D** | Caminar |
+| **Ratón** | Mirar (clic en la escena para capturar el puntero) |
+| **E** | Atender el puesto donde estás · cotizar |
+| **B** | Panel del almacén (pedir refacciones) |
+| **T** | Panel de contratación |
+| **Espacio** | Pausar |
+| **1 2 4** | Velocidad ×1, ×2, ×4 |
+
+## El CLI
 
 ```bash
 ./bin/simulador --escenario datos/escenarios/base.json --tabla
@@ -72,60 +106,35 @@ Salida esperada de `make test`:
 
 | Archivo | Para qué sirve |
 |---|---|
-| `base.json` | El escenario de referencia: 18 vehículos/día, 2 bahías, 3 mecánicos |
-| `validacion-mmc.json` | **Verificación del motor**: abre 24 h y usa un solo tipo de avería, así que el subsistema de diagnóstico es un M/M/c exacto y se puede comparar con la fórmula |
-| `saturado.json` | Taller sobrecargado: sirve para ver qué pasa cuando la demanda supera la capacidad |
-| `atasco-refacciones.json` | El almacén es el cuello de botella |
-
----
+| `base.json` | El escenario de referencia del modelo por lotes |
+| `validacion-mmc.json` | **Verificación**: abre 24 h y usa un solo tipo de avería, así que el diagnóstico es un M/M/c exacto y se compara con la fórmula (error 0.20 %) |
+| `saturado.json` | Taller sobrecargado: la cola crece sin límite |
+| `atasco-refacciones.json` | El almacén es el cuello de botella: el taller está ocioso y aun así no entrega |
 
 ## Estructura
 
 ```
-notas/            Documentación en Obsidian (especificación, modelo, reporte)
+notas/            Documentación en Obsidian (diseño, modelo, reporte)
 include/sim/      Cabeceras públicas del motor
-src/              Motor de simulación en C (sin I/O, sin dependencias)
-servidor/         Servidor HTTP en C (sockets POSIX) + rutas de la API
+src/              Motor en C: PRNG, distribuciones, analítico, modelo, juego
+servidor/         Servidor HTTP en C y rutas de la API
 cli/              Interfaz de línea de comandos
 tests/            Pruebas en C
 datos/escenarios/ Escenarios en JSON
-web/              Interfaz (React + Vite + Tailwind + Chart.js)
+web/              Interfaz (React + R3F + Tailwind)
 tercer-partes/    cJSON (MIT), vendorizado
-scripts/          Utilidades (barrido paramétrico)
 ```
-
-## La API
-
-| Método | Ruta | Qué hace |
-|---|---|---|
-| GET | `/api/salud` | Estado del servicio |
-| GET | `/api/escenario` | Escenario por defecto |
-| GET | `/api/escenarios` | Lista los escenarios disponibles |
-| POST | `/api/simular` | Corre la simulación y devuelve los resultados |
-
-El cuerpo de `POST /api/simular` acepta los mismos campos que produce
-`GET /api/escenario`. Los campos ausentes conservan su valor por defecto.
-
-Cada métrica se devuelve como un objeto `{valor, ic95}`, de modo que es
-imposible leer un número sin ver su incertidumbre al lado.
-
----
 
 ## Reproducibilidad
 
-Misma semilla + mismos parámetros ⇒ **los mismos números**, bit a bit. El
+Misma semilla + mismas acciones ⇒ **los mismos números**, bit a bit. El
 generador es propio (LCG de 16 bits con periodo máximo 65536, documentado en
-[`notas/09-prng-generador.md`](notas/09-prng-generador.md)) y las réplicas usan
-semillas distintas pero derivadas de la base, de forma que el resultado
-completo es auditable.
-
-El PRNG se verifica contra las tablas de la unidad anterior: las 12 primeras
-iteraciones de las semillas 1 y 2026 se reproducen exactamente.
+[`notas/09-prng-generador.md`](notas/09-prng-generador.md)) y se verifica
+contra las tablas de la unidad anterior.
 
 ## Dependencias
 
-- **C:** compilador C17 y `libm`. Nada más. cJSON va vendorizado en
-  `tercer-partes/`.
+- **C:** compilador C17 y `libm`. Nada más. cJSON va vendorizado.
 - **Web:** Node 20+ y npm. `npm install` en `web/`.
 
 No hace falta instalar nada del sistema: el proyecto compila y corre sin
@@ -133,5 +142,5 @@ No hace falta instalar nada del sistema: el proyecto compila y corre sin
 
 ## Documentación
 
-Empieza por [`notas/00-index.md`](notas/00-index.md). Ahí está el mapa de todo
-el proyecto, con el índice de notas y el estado de cada fase.
+Empieza por [`notas/00-index.md`](notas/00-index.md). Ahí está el mapa del
+proyecto y el estado de cada fase.

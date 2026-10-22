@@ -55,17 +55,29 @@ Todas las fases cerradas. Criterios cumplidos:
 
 | Fase | Criterio | Estado |
 |---|---|---|
-| F0 | Cimientos, repo, vault de Obsidian, notas 00–04 | ✅ |
-| F1 | PRNG: 12 filas de cada tabla áurea, periodo 65536, dado uniforme | ✅ |
-| F2 | Distribuciones: chi-cuadrado y Kolmogorov-Smirnov | ✅ |
-| F3 | Motor de eventos discretos: reproducibilidad e invariantes | ✅ |
-| F4 | Estadísticas y validación contra M/M/c (error 0.20 %) | ✅ |
-| F5 | Servidor HTTP: contrato de la API verificado con `curl` | ✅ |
-| F6 | Interfaz web: build limpio, 8 pruebas, smoke en navegador | ✅ |
-| F7 | Reporte y entrega | ✅ |
+| G0 | Documento de diseño del juego (notas 01–04) | ✅ |
+| G1 | Motor extraíble: las colas compartidas por ambos motores | ✅ |
+| G2 | Capa de juego: el trabajo lo inicia alguien, con economía | ✅ |
+| G3 | API de partida autoritativa, con candado | ✅ |
+| G4 | Escena 3D en primera persona, 60 fps | ✅ |
+| G5 | Bucle de juego completo y parte del día | ✅ |
+| G6 | NPCs, contratación y balance del juego | ✅ |
+| G7 | Reporte y entrega | ✅ |
 
-**Pruebas:** 1 356 797 comprobaciones en C, todas en verde.
+**Pruebas:** 8 suites, 485 904 comprobaciones, todas en verde.
+**Validación:** error del 0.20 % contra la solución M/M/c.
 **Resultados:** ver [[08-reporte]].
+
+## Las dos vistas
+
+| Vista | Qué es | Para qué |
+|---|---|---|
+| **Juego** | Simulación en primera persona, con el jugador en los puestos | La entrega de la asignatura |
+| **Análisis** | El mismo motor por lotes, con Intervalos de confianza | Validar el modelo contra la teoría y alimentar el reporte |
+
+Las dos comparten el motor de eventos discretos en C: el del juego es el
+mismo con las decisiones del jugador, y el del análisis es el mismo sin
+jugador.
 
 ## Cómo se trabaja aquí
 
