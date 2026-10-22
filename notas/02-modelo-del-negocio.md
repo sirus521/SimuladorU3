@@ -107,12 +107,13 @@ el mismo.
 | Concepto | Valor | Nota |
 |---|---|---|
 | **Ingreso** | Precio de venta del presupuesto que aceptó el cliente | Se cobra en la entrega |
-| **Coste de refacciones** | $1 200 / $2 500 / $4 000 según tipo | Se paga al tomar la pieza del almacén |
-| **Nómina** | $900 por empleado por día | Se paga al cerrar cada día |
-| **Alquiler** | $2 500 por día | Fijo, se paga al cerrar cada día |
-| **Precio de la pieza** | $1 500 por lote de 10 | Se paga al pedir el lote |
-| **Plazo del proveedor** | 24 h | Las piezas tardan un día en llegar |
-| **Saldo inicial** | $8 000 | Para arrancar |
+| **Coste de refacciones** | $1 500 / $3 000 / $5 000 según tipo | Se imputa **al entregar**, no al tomar la pieza |
+| **Nómina** | $2 000 por empleado por día | Se paga al cerrar cada día |
+| **Alquiler** | $4 000 por día | Fijo, se paga al cerrar cada día |
+| **Lote de refacciones** | 20 piezas por $1 500 | Llega al abrir del día siguiente |
+| **Lote urgente** | 20 piezas por $3 000 | Llega en 1 hora, dentro del turno |
+| **Plazo del proveedor** | 1 día de taller | Con la opción urgente, 1 hora |
+| **Saldo inicial** | $25 000 | Cubre nómina y alquiler de los primeros turnos |
 
 **El flujo de caja diario es el que mata o salva la partida.** Con 15
 trabajos entregados al día a $8 500 de media, entran $127 500; con 3
@@ -125,7 +126,7 @@ de facturar a tiempo**.
 
 | Regla | Valor |
 |---|---|
-| **Cuota diaria** | 12 trabajos entregados por día (ajustable) |
+| **Cuota diaria** | 10 trabajos entregados por día |
 | **Reputación** | 0 a 100, empieza en 70 |
 | **Reputación +2** | por cada trabajo entregado |
 | **Reputación −5** | por cada cliente que se va (rechaza o se cansa de esperar) |
@@ -140,16 +141,17 @@ recuperarse. Esa espiral es el mecanismo de derrota más lento.
 
 | Regla | Valor | Razón |
 |---|---|---|
-| Llegadas por día | 18 (× factor de reputación) | Demanda base del taller |
+| Llegadas por día | 14 (× factor de reputación) | Demanda base del taller |
 | Horario de atención | 09:00 – 18:00 (9 h) | Turno único, 6 días a la semana |
 | Bahías de diagnóstico | 2 | Tamaño inicial del taller |
-| Bahías de reparación | 3 | Tamaño inicial del taller |
-| Inventario inicial | 40 unidades | ~1.5 días de consumo |
-| Plazo del proveedor | 24 h | Las piezas no son instantáneas |
-| Aceptación base del presupuesto | 85 % | Acepta si el precio es razonable |
-| Tolerancia del cliente | ±25 % sobre el precio justo | Si te pasas, se va |
-| Cuota diaria | 12 trabajos | Objetivo de la partida |
+| Bahías de reparación | 1 por mecánico | Contratar gente **sí** aumenta la capacidad |
+| Inventario inicial | 60 unidades | ~4 días de consumo: hay que reponerlo |
+| Plazo del proveedor | Llega al abrir del día siguiente | Y hay un lote urgente en 1 h |
+| Disposición a pagar | Precio justo × [0.80, 1.20] | Se sortea una vez al llegar |
+| Precio del NPC | 85 % del precio justo | Pierde ~12 % de los clientes |
+| Cuota diaria | 10 trabajos | Objetivo de la partida |
 | Días de la partida | 30 | Un mes de operación |
+| Reputación | 0 a 100, empieza en 70 | +3 por entrega, −2 por cliente perdido |
 
 ## Supuestos del negocio
 

@@ -195,6 +195,9 @@ int juego_accion_cotizar(juego_t *g, int precio);
 /* Pide un lote de refacciones. */
 int juego_accion_pedir_lote(juego_t *g);
 
+/* Pide un lote urgente: llega en una hora, pero cuesta el doble. */
+int juego_accion_pedir_lote_ex(juego_t *g, int urgente);
+
 /* Contrata un empleado del tipo dado. */
 int juego_accion_contratar(juego_t *g, int tipo_empleado);
 

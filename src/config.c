@@ -18,19 +18,21 @@ void config_valores_defecto(config_t *cfg)
     cfg->dias_calentamiento = 10;
     cfg->replicas = 30;
 
-    /* Demanda: 18 vehículos por día, concentrados en las 9 horas de
-     * atención. Con 2 bahías y 3 mecánicos el sistema es estable pero
-     * con cola visible en reparación: la reparación es el cuello de
-     * botella, que es justo lo que el simulador debe mostrar. */
-    cfg->llegadas_por_dia = 18.0;
+    /* Demanda: 14 vehículos por día, concentrados en las 9 horas de
+     * atención. Con 3 mecánicos (unos 1.3 h de trabajo por vehículo) eso
+     * son 18 h de trabajo en un turno de 27 h: la cuota de 12 se puede
+     * cumplir, pero no con holgura. A 18 vehículos/día la plantilla base
+     * no llega, y el juego se volvería imposible desde el primer día. */
+    cfg->llegadas_por_dia = 14.0;
     cfg->bahias_diagnostico = 2;
     cfg->mecanicos = 3;
 
-    /* Refacciones: el consumo es 20 veh/día × 0.85 aceptación × 1.2
-     * piezas/trabajo ≈ 20 piezas/día. Con un lote de 40 cada 48 h se
-     * cubren 20/día, así que el almacén llega a tener tension sin
-     * colapsarse. */
-    cfg->refacciones_stock = 40;
+    /* Refacciones: el consumo es ~14 veh/día × 0.88 aceptación × 1.2
+     * piezas/trabajo ≈ 15 piezas/día. El stock inicial de 60 cubre unos
+     * 4 días, y a partir de ahí el jugador tiene que pedir lotes (tecla B).
+     * El almacén es una decisión de juego, no un parámetro: por eso el stock
+     * inicial es limitado y hay que reponerlo. */
+    cfg->refacciones_stock = 60;
     cfg->refacciones_lote = 40;
     cfg->refacciones_periodo_h = 48.0;
 

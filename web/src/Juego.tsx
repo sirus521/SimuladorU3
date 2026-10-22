@@ -187,7 +187,7 @@ export function Juego() {
   const [pausado, setPausado] = useState(false);
   const [velocidad, setVelocidad] = useState(1);
   const [panel, setPanel] = useState<'ninguno' | 'contratar' | 'almacen' | 'cotizar'>('ninguno');
-  const [precio, setPrecio] = useState(8500);
+  const [precio, setPrecio] = useState(0);
   const iniciado = useRef(false);
 
   /* --- Conexión con el servidor --- */
@@ -246,7 +246,9 @@ export function Juego() {
         // Al llegar al mostrador se abre el precio: el cliente tiene su
         // disposición a pagar, así que la cuota se puede ver.
         const v = r.estado.vehiculos.find((x) => x.id === r.estado.jugador_vehiculo);
-        setPrecio(v ? Math.round(v.disposicion * 0.85) : 8500);
+        // Se cotiza un 15 % por debajo de lo que el cliente está dispuesto
+        // a pagar: sale rentable y aún deja margen de negociación.
+        setPrecio(v ? Math.round(v.disposicion * 0.85) : 0);
         setPanel('cotizar');
       }
     } catch (e) {
@@ -280,11 +282,17 @@ export function Juego() {
     [],
   );
 
-  const accionLote = useCallback(async () => {
+  const accionLote = useCallback(async (urgente: boolean) => {
     try {
-      const r = await pedirLote();
+      const r = await pedirLote(urgente);
       setEstado(r.estado);
-      if (!r.aceptada) setError('No se pudo pedir el lote (¿saldo o lote en camino?).');
+      if (!r.aceptada) {
+        setError(
+          urgente
+            ? 'No se pudo pedir el lote urgente (¿saldo insuficiente?).'
+            : 'No se pudo pedir el lote (¿saldo o lote en camino?).',
+        );
+      }
     } catch (e) {
       setError(e instanceof ErrorApi ? e.message : 'No se pudo pedir el lote.');
     }

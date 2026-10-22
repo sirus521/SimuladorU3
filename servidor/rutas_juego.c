@@ -150,7 +150,10 @@ static int endpoint_accion_interno(int fd, const char *cuerpo, size_t longitud)
         }
         aceptada = juego_accion_cotizar(&partida, (int)p->valuedouble);
     } else if (strcmp(accion->valuestring, "pedir_lote") == 0) {
-        aceptada = juego_accion_pedir_lote(&partida);
+        /* Con "urgente": 1, la entrega es inmediata y cuesta el doble. */
+        const cJSON *u = cJSON_GetObjectItemCaseSensitive(entrada, "urgente");
+        int urgente = (u != NULL && cJSON_IsNumber(u) && u->valuedouble != 0.0);
+        aceptada = juego_accion_pedir_lote_ex(&partida, urgente);
     } else if (strcmp(accion->valuestring, "contratar") == 0) {
         const cJSON *p = cJSON_GetObjectItemCaseSensitive(entrada, "tipo");
         if (p == NULL || !cJSON_IsNumber(p)) {

@@ -101,12 +101,12 @@ export function cotizar(precio: number): Promise<RespuestaAccion> {
   });
 }
 
-/** Pide un lote de refacciones. */
-export function pedirLote(): Promise<RespuestaAccion> {
+/** Pide un lote de refacciones (llega al abrir del día siguiente). */
+export function pedirLote(urgente = false): Promise<RespuestaAccion> {
   return pedir<RespuestaAccion>('/partida/accion', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ accion: 'pedir_lote' }),
+    body: JSON.stringify({ accion: 'pedir_lote', urgente }),
   });
 }
 

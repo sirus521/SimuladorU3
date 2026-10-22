@@ -73,14 +73,24 @@ function Barra({
   );
 }
 
-function ContadorCola({ nombre, n }: { nombre: string; n: number }) {
-  const critico = n >= 3;
+function ContadorCola({
+  nombre,
+  n,
+  critico = false,
+}: {
+  nombre: string;
+  n: number;
+  critico?: boolean;
+}) {
+  /* Una cola de 3 o más es el aviso normal; para las piezas el umbral es
+   * más bajo, porque quedarse sin material paraliza el taller entero. */
+  const alarma = critico ? n < 12 : n >= 3;
   return (
     <span className="flex items-center gap-1 text-xs">
       <span className="text-slate-400">{nombre}</span>
       <span
         className={`rounded px-1.5 py-0.5 font-semibold tabular-nums ${
-          critico ? 'bg-red-500/80 text-white' : 'bg-slate-700/80 text-slate-200'
+          alarma ? 'bg-red-500/80 text-white' : 'bg-slate-700/80 text-slate-200'
         }`}
       >
         {n}
@@ -108,15 +118,14 @@ function PanelContratar({
     { tipo: 2, nombre: 'Almacenista', ayuda: 'Toma piezas del almacén.' },
     { tipo: 3, nombre: 'Cotizador', ayuda: 'Presenta presupuestos.' },
   ];
-  const NOMINA = 900;
 
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/70">
       <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
         <h2 className="text-lg font-bold text-white">Contratar personal</h2>
         <p className="mt-1 text-xs text-slate-400">
-          Cada empleado cuesta {dinero(NOMINA)} de nómina al día. Atiende un
-          puesto por ti.
+          Cada empleado cuesta {dinero(estado?.nomina_diaria ?? 0)} de nómina al
+          día. Atiende un puesto por ti.
         </p>
         <div className="mt-3 space-y-2">
           {puestos.map((p) => {
@@ -173,7 +182,7 @@ function PanelAlmacen({
   onCerrar,
 }: {
   estado: EstadoPartida | null;
-  onLote: () => void;
+  onLote: (urgente: boolean) => void;
   onCerrar: () => void;
 }) {
   return (
@@ -194,21 +203,40 @@ function PanelAlmacen({
             </span>
           </div>
           <div className="flex justify-between text-slate-300">
-            <span>Lote de 10 piezas</span>
-            <span className="tabular-nums text-white">$ 1 500</span>
+            <span>
+              Lote de {estado?.piezas_por_lote ?? 20} piezas
+            </span>
+            <span className="tabular-nums text-white">
+              {dinero(estado?.precio_lote ?? 0)}
+            </span>
+            <span>Urgente (llega en 1 h)</span>
+            <span className="tabular-nums text-white">
+              {dinero(estado?.precio_lote_urgente ?? 0)}
+            </span>
           </div>
           <div className="flex justify-between text-slate-300">
             <span>Plazo del proveedor</span>
-            <span className="tabular-nums text-white">24 h</span>
+            <span className="tabular-nums text-white">
+              {estado?.plazo_lote_h ?? 24} h
+            </span>
           </div>
         </div>
         <div className="mt-4 flex items-center justify-between">
-          <button
-            onClick={onLote}
-            className="rounded bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-900 hover:bg-white"
-          >
-            Pedir lote
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => onLote(false)}
+              className="rounded bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-900 hover:bg-white"
+            >
+              Pedir lote
+            </button>
+            <button
+              onClick={() => onLote(true)}
+              className="rounded bg-amber-400 px-3 py-1.5 text-xs font-semibold text-slate-900 hover:bg-amber-300"
+              title="Llega en 1 hora, pero cuesta el doble"
+            >
+              Urgente
+            </button>
+          </div>
           <button
             onClick={onCerrar}
             className="rounded border border-slate-600 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
@@ -236,9 +264,8 @@ function PanelCotizar({
 }) {
   const vehiculo = estado?.vehiculos.find((v) => v.id === estado.jugador_vehiculo);
   const tipo = vehiculo ? ['Eléctrico', 'Mecánico', 'Carrocería'][vehiculo.tipo] : '';
-  const justo = vehiculo
-    ? [4000, 8500, 14000][vehiculo.tipo]
-    : 0;
+  /* El precio justo lo manda el servidor: el cliente no duplica la regla. */
+  const justo = vehiculo ? vehiculo.precio_justo : 0;
   const disposicion = vehiculo?.disposicion ?? 0;
 
   return (
@@ -457,7 +484,7 @@ export function Hud({
   onAccion: () => void;
   onCotizar: (p: number) => void;
   onContratar: (tipo: number) => void;
-  onLote: () => void;
+  onLote: (urgente: boolean) => void;
   onCerrarPanel: () => void;
   onLimpiarError: () => void;
   onVelocidad: (v: number) => void;
@@ -556,7 +583,11 @@ export function Hud({
         <ContadorCola nombre="Alm" n={estado.colas.almacen} />
         <ContadorCola nombre="Rep" n={estado.colas.reparacion} />
         <ContadorCola nombre="Ent" n={estado.colas.entrega} />
-        <ContadorCola nombre="Piezas" n={estado.stock_refacciones} />
+        <ContadorCola
+          nombre="Piezas"
+          n={estado.stock_refacciones}
+          critico={estado.stock_refacciones < 12}
+        />
       </div>
 
       {/* Velocidad y ayuda */}
@@ -584,6 +615,22 @@ export function Hud({
           WASD · ratón · E actuar · B almacén · T contratar
         </span>
       </div>
+
+      {/* Aviso de falta de material: es la información que obliga a
+          * actuar, y no aparece en ningún otro sitio. */}
+      {estado.stock_refacciones === 0 && !estado.terminada && (
+        <div className="pointer-events-auto absolute left-1/2 top-28 -translate-x-1/2 rounded border border-red-500 bg-red-900/90 px-4 py-2 text-sm text-red-100">
+          <strong>Sin refacciones.</strong> El taller no puede trabajar.
+          Pulsa <kbd className="rounded bg-red-800 px-1">B</kbd> para pedir un
+          lote.
+        </div>
+      )}
+      {estado.stock_refacciones > 0 && estado.stock_refacciones < 12 && !estado.terminada && (
+        <div className="pointer-events-auto absolute left-1/2 top-28 -translate-x-1/2 rounded border border-amber-500 bg-amber-900/90 px-4 py-2 text-sm text-amber-100">
+          Quedan {estado.stock_refacciones} piezas. Pulsa{' '}
+          <kbd className="rounded bg-amber-800 px-1">B</kbd> para pedir más.
+        </div>
+      )}
 
       {/* Aviso de error */}
       {error && (

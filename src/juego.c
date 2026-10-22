@@ -83,17 +83,30 @@ static const int PUESTOS_MECANICO[2] = { PUESTO_DIAGNOSTICO, PUESTO_REPARACION }
 /* Saldo inicial: cubre alquiler y la nómina de los primeros turnos, para
  * que el jugador pueda contratar a alguien nada más empezar. */
 #define SALDO_INICIAL      25000
-#define PRECIO_LOTE         2000
-#define PIEZAS_POR_LOTE     10
+#define PRECIO_LOTE         1500
+#define PIEZAS_POR_LOTE     20
+/* Plazo normal del proveedor: llega al abrir del dia siguiente. */
 #define PLAZO_LOTE_HORAS    24.0
+/* Lote urgente: llega en una hora, pero cuesta el doble. Es la salida
+ * cuando el taller se queda sin material a media jornada. */
+#define PRECIO_LOTE_URGENTE 3000
+#define PLAZO_LOTE_URGENTE_H 1.0
 #define REPUTACION_INICIAL  70
-#define CUOTA_DIARIA        12
+#define CUOTA_DIARIA        10
 #define DIAS_PARTIDA        30
 #define HORAS_ATENCION      9.0
 #define HORA_APERTURA       9.0
 
-/* Tolerancia del cliente sobre el precio justo. */
-#define TOLERANCIA_PRECIO 0.25
+/* Tolerancia del cliente sobre el precio justo: la disposición a pagar
+ * se sortea en [0.80, 1.20] × precio justo.
+ *
+ * Esto es lo que da al jugador una decisión con contenido: el NPC cotiza
+ * al 85 % del precio justo (y por tanto pierde ~12 % de los clientes), pero
+ * el jugador puede subir el precio y ganar margen a costa de clientes, o
+ * bajarlo para llenar el taller. Con la disposición en [0.8, 1.2] y un
+ * precio en 0.85, el rechazo es de ~12 %.
+ */
+#define TOLERANCIA_PRECIO 0.20
 /* Variación del trabajo. */
 #define RUIDO_TRABAJO      0.10
 /* Un cliente se va si espera más de esto en recepción. */
@@ -383,7 +396,12 @@ int juego_iniciar(juego_t *g, const config_t *cfg, uint32_t semilla)
     g->cap_vehiculos = 64;
 
     g->capacidad_bahias_diag = cfg->bahias_diagnostico;
-    g->capacidad_bahias_rep = cfg->mecanicos;
+    /* Cada mecánico ocupa una bahía de reparación. La capacidad de
+     * reparación la da el equipo contratado, no un número fijo: si no,
+     * contratar más gente sólo añadiría nómina y no capacidad, y el juego
+     * sería una trampa. La bahía mínima es 1 para que siempre se pueda
+     * trabajar. */
+    g->capacidad_bahias_rep = cfg->mecanicos > 0 ? cfg->mecanicos : 1;
 
     g->saldo = SALDO_INICIAL;
     g->reputacion = REPUTACION_INICIAL;
@@ -409,7 +427,13 @@ int juego_iniciar(juego_t *g, const config_t *cfg, uint32_t semilla)
     /* Cierre del primer día. */
     cola_push(&g->eventos, HORA_APERTURA + HORAS_ATENCION, EV_FIN_DIA, -1);
     /* Fin de la partida. */
-    cola_push(&g->eventos, (double)DIAS_PARTIDA * 24.0, EV_FIN_PARTIDA, -1);
+    /* La partida termina al cerrar el último día de trabajo. El taller
+     * abre de 09:00 a 18:00, así que el día 30 acaba en la hora
+     * 29*24 + 18 = 714, no en 30*24 = 720: con el evento al final del
+     * reloj la partida se alargaba un turno de más. */
+    cola_push(&g->eventos,
+              (double)(DIAS_PARTIDA - 1) * 24.0 + HORA_APERTURA + HORAS_ATENCION,
+              EV_FIN_PARTIDA, -1);
 
     return 0;
 }
@@ -501,6 +525,21 @@ static void cerrar_dia(juego_t *g)
         generar_llegada(g);
         cola_push(&g->eventos, inicio, EV_LLEGADA, -1);
         cola_push(&g->eventos, inicio + HORAS_ATENCION, EV_FIN_DIA, -1);
+    }
+
+    /* Lote que estaba en camino: llega al abrir el taller. El plazo de
+     * entrega cruzaba la noche (el taller cierra de 18:00 a 09:00), así
+     * que un lote pedido a las 10:00 no llegaba hasta las 10:00 del día
+     * siguiente: el taller se quedaba medio día con la cola parada y sin
+     * poder hacer nada. Con la entrega al abrir, el proveedor cumple en
+     * un día, que es lo que dice el juego. */
+    if (g->lote_en_camino > 0) {
+        double entrega = g->t_lote_llega;
+        double apertura = (double)(dia_siguiente - 1) * 24.0 + HORA_APERTURA;
+        /* Si el lote tenía que llegar antes de que abriera el taller (es
+         * el caso del urgente), se entrega en cuanto abre. */
+        if (entrega < apertura) entrega = apertura;
+        cola_push(&g->eventos, entrega, EV_LOTE_PROVEEDOR, -1);
     }
 }
 
@@ -617,7 +656,13 @@ static void trabajar_empleados(juego_t *g)
              * El vehículo pasa por el estado "en cotización" y el puesto
              * queda ocupado mientras tanto, como en cualquier otro. */
             g->vehiculos[v].estado = V_EN_COTIZACION;
-            g->vehiculos[v].precio_ofrecido = precio_tipo(g->vehiculos[v].tipo);
+            /* El NPC cotiza un 15 % por debajo del precio justo: si
+             * cotizara al precio justo, la mitad de los clientes lo
+             * rechazaría (su disposición a pagar va de -25 % a +25 % del
+             * precio justo) y el taller no podría funcionar ni sin
+             * jugador. El margen se lo queda el taller. */
+            g->vehiculos[v].precio_ofrecido =
+                (int)(precio_tipo(g->vehiculos[v].tipo) * 0.85);
             g->vehiculos[v].espera_cotizar = 1;
             ocupar_puesto(g, puesto);
             cola_push(&g->eventos, g->t_actual + MEDIA_COTIZACION, EV_FIN_COTIZACION, v);
@@ -707,7 +752,12 @@ static void procesar_evento(juego_t *g, const evento_t *ev)
             veh->t_salida = g->t_actual;
             veh->motivo_salida = 1;
             g->perdidos_dia++;
-            g->reputacion -= 5;
+            /* El castigo por cliente perdido es de 2 puntos, no de 5: con
+             * 14 llegadas al día, un mal día (6 perdidos) restaba 30
+             * puntos y mataba la partida en dos días, sin margen para
+             * reaccionar. Con 2, la reputación baja cuando el jugador falla
+             * de verdad y sube cuando rectifica. */
+            g->reputacion -= 2;
             if (g->reputacion < 0) g->reputacion = 0;
         }
         break;
@@ -770,7 +820,11 @@ static void procesar_evento(juego_t *g, const evento_t *ev)
             g->saldo -= coste;
         }
         g->entregas_dia++;
-        g->reputacion += 2;
+        /* Cada entrega sube la reputación 3 puntos y cada cliente perdido
+         * la baja 2: así un día con la cuota cumplida compensa un día
+         * flojo, y la reputación es un termómetro del desempeño, no una
+         * sentencia. */
+        g->reputacion += 3;
         if (g->reputacion > 100) g->reputacion = 100;
         break;
     }
@@ -917,16 +971,24 @@ int juego_accion_cotizar(juego_t *g, int precio)
     return 1;
 }
 
-int juego_accion_pedir_lote(juego_t *g)
+int juego_accion_pedir_lote_ex(juego_t *g, int urgente)
 {
-    if (g->saldo < PRECIO_LOTE) return 0;
+    int precio = urgente ? PRECIO_LOTE_URGENTE : PRECIO_LOTE;
+    double plazo = urgente ? PLAZO_LOTE_URGENTE_H : PLAZO_LOTE_HORAS;
+
+    if (g->saldo < precio) return 0;
     if (g->lote_en_camino > 0) return 0;   /* ya hay un lote en camino */
-    g->saldo -= PRECIO_LOTE;
-    g->gastos_dia_int += PRECIO_LOTE;
+    g->saldo -= precio;
+    g->gastos_dia_int += precio;
     g->lote_en_camino = PIEZAS_POR_LOTE;
-    g->t_lote_llega = g->t_actual + PLAZO_LOTE_HORAS;
+    g->t_lote_llega = g->t_actual + plazo;
     cola_push(&g->eventos, g->t_lote_llega, EV_LOTE_PROVEEDOR, -1);
     return 1;
+}
+
+int juego_accion_pedir_lote(juego_t *g)
+{
+    return juego_accion_pedir_lote_ex(g, 0);
 }
 
 int juego_accion_contratar(juego_t *g, int tipo)
@@ -952,6 +1014,11 @@ int juego_accion_contratar(juego_t *g, int tipo)
     e->puesto_actual = -1;
     e->vehiculo = -1;
     e->t_libre_desde = g->t_actual;
+
+    /* Un mecánico más es una bahía de reparación más. */
+    if (tipo == EMPLEADO_MECANICO) {
+        g->capacidad_bahias_rep++;
+    }
     return 1;
 }
 
@@ -992,6 +1059,18 @@ struct cJSON *juego_a_json(const juego_t *g)
     cJSON_AddStringToObject(raiz, "motivo", g->motivo);
     cJSON_AddNumberToObject(raiz, "semilla", (double)g->semilla);
 
+    /* Reglas económicas: las manda el servidor para que el cliente no las
+     * duplique (y no se desincronicen). */
+    cJSON_AddNumberToObject(raiz, "nomina_diaria", NOMINA_DIARIA);
+    cJSON_AddNumberToObject(raiz, "alquiler_diario", ALQUILER_DIARIO);
+    cJSON_AddNumberToObject(raiz, "precio_lote", PRECIO_LOTE);
+    cJSON_AddNumberToObject(raiz, "precio_lote_urgente", PRECIO_LOTE_URGENTE);
+    cJSON_AddNumberToObject(raiz, "plazo_lote_urgente_h", PLAZO_LOTE_URGENTE_H);
+    cJSON_AddNumberToObject(raiz, "piezas_por_lote", PIEZAS_POR_LOTE);
+    cJSON_AddNumberToObject(raiz, "plazo_lote_h", PLAZO_LOTE_HORAS);
+    cJSON_AddNumberToObject(raiz, "horas_atencion", HORAS_ATENCION);
+    cJSON_AddNumberToObject(raiz, "dias_partida", DIAS_PARTIDA);
+
     for (i = 0; i < JUEGO_N_PUESTOS; i++) {
         static const char *nombres[JUEGO_N_PUESTOS] = {
             "recepcion", "diagnostico", "cotizacion", "almacen", "reparacion", "entrega"
@@ -1016,6 +1095,9 @@ struct cJSON *juego_a_json(const juego_t *g)
             cJSON_AddNumberToObject(o, "espera", g->t_actual - v->t_entrada_sistema);
             cJSON_AddNumberToObject(o, "disposicion", v->disposicion);
             cJSON_AddNumberToObject(o, "precio_ofrecido", v->precio_ofrecido);
+            cJSON_AddNumberToObject(o, "precio_justo", precio_tipo(v->tipo));
+            cJSON_AddNumberToObject(o, "coste_pieza", coste_pieza(v->tipo));
+            cJSON_AddNumberToObject(o, "piezas_necesarias", piezas_de_tipo(v->tipo));
             cJSON_AddNumberToObject(o, "en_espera", g->t_actual - v->t_inicio_espera);
             cJSON_AddItemToArray(vehiculos, o);
         }

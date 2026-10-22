@@ -42,6 +42,10 @@ export interface Vehiculo {
   /** Disposición a pagar del cliente. */
   disposicion: number;
   precio_ofrecido: number;
+  /** Precio justo del tipo de avería (lo manda el servidor). */
+  precio_justo: number;
+  coste_pieza: number;
+  piezas_necesarias: number;
   /** Horas que lleva esperando en la cola actual. */
   en_espera: number;
 }
@@ -93,6 +97,17 @@ export interface EstadoPartida {
   ganada: number;
   motivo: string;
   semilla: number;
+
+  /* Reglas económicas, mandadas por el servidor para no duplicarlas. */
+  nomina_diaria: number;
+  alquiler_diario: number;
+  precio_lote: number;
+  precio_lote_urgente: number;
+  plazo_lote_urgente_h: number;
+  piezas_por_lote: number;
+  plazo_lote_h: number;
+  horas_atencion: number;
+  dias_partida: number;
   colas: Colas;
   vehiculos: Vehiculo[];
   empleados: Empleado[];
