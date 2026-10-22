@@ -23,11 +23,12 @@ CJSON_SRC := tercer-partes/cjson/cJSON.c
 CJSON_OBJ := $(BUILD)/cJSON.o
 
 MOTOR_SRC := src/prng.c src/distrib.c src/analitico.c src/config.c \
-             src/modelo.c src/agregado.c
+             src/modelo.c src/agregado.c src/colas.c src/juego.c
 MOTOR_OBJ := $(patsubst src/%.c,$(BUILD)/%.o,$(MOTOR_SRC))
 
 CLI_OBJ    := $(BUILD)/cli_main.o
-SERVIDOR_OBJ := $(BUILD)/http.o $(BUILD)/rutas.o $(BUILD)/servidor_main.o
+SERVIDOR_OBJ := $(BUILD)/http.o $(BUILD)/rutas.o $(BUILD)/servidor_main.o \
+                $(BUILD)/rutas_juego.o
 
 BIN_SIMULADOR := $(BIN)/simulador
 BIN_SERVIDOR  := $(BIN)/simulador-web
@@ -55,6 +56,9 @@ $(BUILD)/rutas.o: servidor/rutas.c | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/servidor_main.o: servidor/main.c | $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/rutas_juego.o: servidor/rutas_juego.c | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BIN_SIMULADOR): $(MOTOR_OBJ) $(CLI_OBJ) $(CJSON_OBJ) | $(BIN)

@@ -1,230 +1,280 @@
 ---
 tipo: modelo-matematico
 proyecto: Simulador de Taller de Reparación
-estado: aprobado
+estado: borrador
 ---
 
 # Modelo matemático
 
+> **Qué cambió respecto a la versión anterior.** El modelo base (reloj
+> simulado, llegadas de Poisson, tiempos de servicio) **se conserva entero**:
+> es lo que hace el juego creíble. Lo que se añade es (a) la escala del
+> tiempo real, (b) la economía, y (c) el hecho de que **el tiempo de servicio
+> lo aporta el jugador**, no el azar.
+
 ## 1. Reloj y unidades
 
-- **Unidad de tiempo: horas.** Todo el modelo trabaja en horas reales.
-- `t = 0` es el lunes a las 00:00 del inicio de la simulación.
-- Horizonte: `dias` días completos (por defecto 30 → 720 h).
-- El día comercial va de `09:00` a `18:00` (9 h).
+- **Unidad del modelo: horas de juego.** Todo el motor trabaja en horas.
+- Un día de juego son 9 horas de atención (09:00–18:00).
+- **Escala de tiempo real:** 1 segundo real = 1 minuto de juego
+  (configurable: ×1, ×2, ×4). Con la escala ×1, un día de juego dura **9
+  minutos reales**; a ×4, unos 2 minutos y cuarto.
+- La noche (18:00–09:00) **no es jugable**: el juego avanza solo y la
+  temporada siguiente trae clientes nuevos.
+
+### Por qué la escala importa
+
+El jugador tiene que **sentir** el reloj sin aburrirse. La regla de diseño
+es: **ninguna acción del jugador debe tardar más de ~20 segundos reales**.
+Con escala ×1, la reparación más larga (6 h de carrocería) son 6 minutos
+reales: demasiado. Por eso el jugador **no mantiene pulsada la tecla**: la
+acción se inicia, el trabajo **continúa solo**, y el jugador puede atender
+otro puesto mientras tanto. Lo que el jugador controla es **cuándo empieza**
+cada cosa, no cuánto tarda.
+
+Esto es lo que hace que el juego sea de **triage y no de ritmo**, y coincide
+con el modelo: los tiempos de servicio son deterministas por tipo de avería.
 
 ## 2. Aleatoriedad
 
-Toda la aleatoriedad sale de **un solo PRNG propio** ([[09-prng-generador]]), un
-LCG de 16 bits con periodo máximo 65536 y una etapa de mezcla xorshift en la
-salida. El generador se avanza **una vez por muestra**, con la semilla al inicio
-de cada réplica.
+Toda la aleatoriedad sigue viniendo del **PRNG propio** ([[09-prng-generador]]):
+LCG de 16 bits con periodo máximo 65536 y mezcla xorshift.
 
-Consecuencia práctica: **misma semilla + mismo escenario ⇒ mismos números**,
-bit a bit. Sin eso no hay auditoría posible.
+| Sorteo | Distribución | Para qué |
+|---|---|---|
+| Llegadas | Proceso de Poisson, no estacionario | Cuándo llega cada cliente |
+| Tipo de avería | Categórica (40/40/20) | Qué avería trae el cliente |
+| Aceptación del presupuesto | Bernoulli con umbral de precio | Si el cliente contrata |
+| Ruido en el trabajo | Uniforme ±10 % | Variación menor en el tiempo real |
 
-Las muestras se construyen sobre un **uniforme en [0,1)** obtenido del PRNG:
-`u = (z + 0.5) / 65536`, con `z` la salida mezclada. El `+0.5` evita que `u`
-sea exactamente 0 (que rompería el logaritmo de la inversa de la exponencial).
+**El PRNG sigue siendo autoritativo y reproducible**: misma semilla + mismas
+acciones del jugador ⇒ misma partida. Eso permite depurar un bug del juego
+reproduciendo la partida exacta.
+
+> **Restricción nueva:** el LCG tiene periodo 65536. En una partida de 30
+> días × 9 h, con ~18 clientes por día, se consumen del orden de 30 000
+> muestras: por debajo del periodo, pero **no muy lejos**. El motor vigila
+> el consumo y avisa si una partida se acerca a un cuarto del periodo, porque
+> a partir de ahí los ciclos cortos empiezan a sesgar el resultado.
 
 ## 3. Distribuciones
 
-| Magnitud | Distribución | Parámetro | Origen del parámetro |
-|---|---|---|---|
-| Llegadas | Proceso de Poisson (no estacionario) | λ = 18 / día dentro del horario | Supuesto de negocio |
-| Duración del diagnóstico | Exponencial | μ_d por tipo: 0.5 h (eléctrico), 0.8 h (mecánico), 1.2 h (carrocería) | Supuesto, ver §6 |
-| Duración de la reparación | Exponencial | μ_r por tipo: 2.0 h, 3.5 h, 6.0 h | Supuesto, ver §6 |
-| Decisión del presupuesto | Exponencial + Bernoulli | media 0.5 h; p(acepta) = 0.85 | Supuesto |
-| Tipo de avería | Categórica | 0.40 / 0.40 / 0.20 | Supuesto |
-| Reposición de refacciones | Periódica determinista | cada 48 h, lote de 40 | Regla de negocio |
+### 3.1 Llegadas
 
-### Transformaciones inversas
+Proceso de Poisson **restringido al horario de atención**. La tasa dentro de
+la ventana es:
 
-Las tres distribuciones se generan con el método de inversión:
+```
+λ_ventana = (llegadas_por_dia / 9) · factor_reputación
+```
 
-- **Exponencial:** `x = -media · ln(1 - u)`
-- **Poisson (llegadas):** los saltos entre llegadas son `Exp(λ)`, es decir
-  `-media · ln(1 - u)` con `media = 9 h / 18 llegadas`.
-- **Uniforme discreta (tipo de avería):** se acumula la probabilidad y se toma
-  el primer umbral que supera `u`.
-- **Bernoulli (aceptación):** `u < 0.85`.
+El **factor de reputación** realimenta la demanda:
+
+```
+factor = 0.6 + 0.8 · (reputación / 100)
+```
+
+Con reputación 70 (inicial) el factor es 1.16, así que llegan ~21 clientes en
+vez de 18. Con reputación 20, factor 0.76 → ~14 clientes. Con 0, factor 0.6
+→ ~11. **Un taller con mala fama recibe menos clientes**: la espiral
+descendente es real y está en el modelo, no en el guion.
+
+### 3.2 Tipo de avería
+
+Categórica con pesos 0.40 / 0.40 / 0.20 (eléctrico, mecánico, carrocería).
+
+### 3.3 Aceptación del presupuesto
+
+**Determinista con ruido**, no una probabilidad fija. El cliente tiene una
+**disposición a pagar** que se sortea una vez, al llegar:
+
+```
+disposición = precio_justo · (1 + U(-0.25, +0.25))
+```
+
+El cliente acepta si `precio_ofertado <= disposición`. Esto **cierra el punto
+ciego** del modelo anterior, donde el 15 % de rechazos no tenía explicación:
+ahora el rechazo tiene una causa clara y **el jugador la ve** (el cliente
+tiene su disposición a pagar en la ficha).
+
+### 3.4 Ruido en el trabajo
+
+El tiempo de servicio es determinista por tipo, con una variación uniforme
+de ±10 %:
+
+```
+duración = base · (1 + U(-0.10, +0.10))
+```
 
 ## 4. Eventos
 
-La simulación es de **eventos discretos** con una cola de prioridad por tiempo.
-Los empates en el tiempo se rompen por **orden de inserción**, de modo que dos
-corridas con la misma semilla producen exactamente la misma secuencia.
+La cola de eventos discretos **se conserva**, con desempate por orden de
+inserción (determinismo).
 
 | # | Evento | Qué dispara | Qué hace |
 |---|---|---|---|
-| E1 | `LLEGADA` | Reloj | Cliente llega → se genera OT → va a `cola_diagnostico` |
-| E2 | `FIN_DIAGNOSTICO` | Reloj | Libera bahía → el cliente evalúa el presupuesto |
-| E3 | `DECISION_PRESUPUESTO` | Reloj | Acepta → pide refacciones / Rechaza → el vehículo se va |
-| E4 | `FIN_REPARACION` | Reloj | Libera mecánico → el vehículo se entrega, TPR registrado |
-| E5 | `REPOSICION` | Reloj | Repone inventario → libera OTs en espera de refacciones |
-| E6 | `FIN_HORIZONTE` | Reloj | Termina la simulación; lo que quede en el sistema se reporta aparte |
+| E1 | `LLEGADA` | Reloj | Llega un cliente → espera en recepción |
+| E2 | `FIN_RECEPCION` | Reloj | El cliente pasó a diagnóstico |
+| E3 | `FIN_DIAGNOSTICO` | Reloj | La avería se conoce → espera cotización |
+| E4 | `DECISION_CLIENTE` | Reloj | Acepta o rechaza según su disposición |
+| E5 | `FIN_ALMACEN` | Reloj | Se consumieron las piezas → espera reparación |
+| E6 | `FIN_REPARACION` | Reloj | El vehículo está listo → espera entrega |
+| E7 | `FIN_ENTREGA` | Reloj | Se cobra → el cliente se va |
+| E8 | `LOTE_PROVEEDOR` | Reloj | Llega el lote de refacciones |
+| E9 | `FIN_COTIZACION` | Reloj | El cliente ya sabe el precio y decide |
+| E10 | `FIN_DIA` | Reloj | Se cierra el día: nómina, alquiler, cuota |
+| E11 | `FIN_PARTIDA` | Reloj | Se acaba el mes |
 
-### Diagrama de transiciones de estado de una OT
+### 4.1 El cambio de fondo: el jugador inicia el trabajo
+
+En el modelo anterior, el servicio empezaba **solo** cuando un recurso
+quedaba libre. En el juego, **el servicio no empieza hasta que alguien lo
+empieza**:
+
+| Puesto | Quién lo inicia | Qué pasa mientras tanto |
+|---|---|---|
+| Recepción | Jugador o recepcionista | El cliente espera en la puerta |
+| Diagnóstico | Jugador o mecánico | El vehículo ocupa la bahía, sin avanzar |
+| Cotización | Jugador o recepcionista | El cliente espera la decisión |
+| Almacén | Jugador o almacenista | El vehículo no puede avanzar |
+| Reparación | Jugador o mecánico | El vehículo ocupa la bahía, sin avanzar |
+| Entrega | Jugador o recepcionista | No se factura |
+
+**El jugador no puede hacer su trabajo más rápido.** Solo puede decidir
+*cuándo*. Ese es el núcleo del diseño de juego y la razón por la que un
+empleado contratado (que siempre está disponible) libera al jugador de un
+puesto.
+
+### 4.2 Diagrama de estados de un vehículo
 
 ```
-   [nueva]
-      │ E1
-      ▼
- [espera_diagnostico] ──hay bahía──► [en_diagnostico]
-      │                                    │ E2
-      │                                    ▼
-      │                          [espera_decision]
-      │                                    │ E3 (acepta)
-      │                                    ▼
-      │                            [espera_refaccion]  ◄── no hay stock
-      │                                    │ E5 (hay stock)
-      │                                    ▼
-      │                          [espera_reparacion] ──hay mecánico──► [en_reparacion]
-      │                                    ▲                                │ E4
-      │                                    └────────────────────────────────┘
-      │                                                                  ▼
-      └──────────────────── (rechazo) ──────────────────────────────► [cerrada]
-                                                                     [entregada]
+                    [llegó]
+                        │  E1
+                        ▼
+              [espera_recepcion]
+                        │  (jugador: atender)  E2
+                        ▼
+              [espera_diagnostico]
+                        │  (jugador: diagnosticar) E3
+                        ▼
+              [espera_cotizacion]
+                        │  (jugador: cotizar)  E9 → E4
+                        ├── (rechaza) ──────────► [se_va]
+                        ▼
+              [espera_almacen]
+                        │  (jugador: tomar pieza)  E5
+                        ▼
+              [espera_reparacion]
+                        │  (jugador: reparar)  E6
+                        ▼
+              [espera_entrega]
+                        │  (jugador: entregar)  E7
+                        ▼
+                    [entregado]  → ingreso
 ```
 
-## 5. Estadísticas acumuladas
+## 5. Estadísticas y partida
 
-El motor no guarda la historia completa de cada entidad: acumula estadísticas en
-caliente, porque un horizonte de 30 días × 18 llegadas produce miles de
-registros y no tiene sentido guardarlos todos.
+### 5.1 Durante la partida
 
-Se acumulan:
+Se acumulan en caliente: entregas, ingresos, costes, tiempos de espera por
+puesto, clientes perdidos, y las colas de cada bahía. El HUD muestra en
+todo momento:
 
-- Suma de TPR, TPR² (para la varianza), y un **histograma de TPR** con 20
-  clases, del que sale el percentil 90.
-- Contadores: OT entregadas, presupuestos rechazados, OT bloqueadas por
-  refacciones, minutos de bahía ocupada, minutos de mecánico ocupado.
-- **Series temporales** muestreadas cada 15 min: longitud de cada cola, trabajo
-  en curso, longitud de la cola de refacciones.
+- Día y hora de juego
+- Saldo, ingresos del día, gastos del día
+- Cuota del día y cuánto falta
+- Reputación
+- Colas: recepción, diagnóstico, cotización, almacén, reparación, entrega
+- Empleados: cuántos hay en cada puesto
 
-### Réplicas y confianza
+### 5.2 Parte diario
 
-Una sola corrida es una **muestra** de un proceso estocástico, no un resultado.
-Por eso:
+Al cerrar cada día (E10) se calcula el **parte**:
 
-- Se corren **30 réplicas** con semillas distintas (`semilla_base + i`).
-- Cada réplica devuelve sus métricas.
-- El resultado publicado es la **media entre réplicas** con un
-  **intervalo de confianza al 95 %**:
-  `IC = 1.96 · s / √n`, con `s` la desviación muestral y `n = 30`.
-- Se reporta además la **semilla base**, para que el resultado sea repetible.
-
-### Periodo de calentamiento
-
-El taller arranca vacío: las primeras OT se atendieron de inmediato, porque
-no había nadie en la cola. Medir desde el primer minuto mezcla ese
-transitorio con el régimen permanente.
-
-La evidencia es directa: **sin calentamiento, el TPR medido crece con el
-horizonte**, porque cada horizonte más largo incluye más días de cola
-acumulada.
-
-| Horizonte | TPR medido (sin calentamiento) |
+| Concepto | Cómo se calcula |
 |---|---|
-| 30 días | 16.57 h ± 3.13 |
-| 60 días | 26.70 h ± 5.30 |
-| 90 días | 38.10 h ± 7.52 |
-| 180 días | 62.86 h ± 13.40 |
+| Ingresos | Suma de los precios cobrados ese día |
+| Gastos | Nómina + alquiler + refacciones + lotes pedidos |
+| Saldo | Acumulado |
+| Entregas | Trabajos entregados ese día |
+| Cuota | ¿Entregas ≥ cuota? |
+| Clientes perdidos | Los que se fueron o rechazaron |
+| Espera media | Tiempo promedio de espera por puesto |
 
-El taller no empeora con el tiempo; lo que crece es el peso de los días
-acumulados en la cola dentro de la muestra. Por eso el motor **descarta los
-primeros `dias_calentamiento` días** (10 por defecto) y sólo a partir de ahí
-acumula estadísticas, series y conteos.
+**El parte es lo que convierte la partida en simulación**: el jugador ve
+después de cada día un desglose con el que puede razonar, no solo jugar.
 
-### Diagnóstico de estado estacionario
+### 5.3 Al final de la partida
 
-Con calentamiento, un taller saturado sigue sin alcanzar un régimen: la cola
-sigue creciendo. Para no publicar un número engañoso, cada corrida compara el
-TPR de los vehículos entregados en la **primera mitad** del periodo medido
-con el de la **segunda mitad**.
+Se guarda el **historial de los 30 días** (una fila por día) con todos los
+conceptos del parte. Ese historial es el entregable de simulación de la
+partida: sirve para comparar dos partidas, para ver el efecto de contratar,
+y para el reporte.
 
-- Si difieren menos de 15 %, el sistema está en estado estacionario.
-- Si difieren más, el simulador marca `en_estacionario = 0` y avisa de que
-  **el TPR sigue creciendo con el horizonte**, así que el valor publicado
-  depende de cuántos días se simularon.
+## 6. La escala de tiempos del juego
 
-En el escenario base la deriva es de 1.0 % (estacionario). En el escenario
-saturado es de 56.8 % y en el de atasco de refacciones de 62.3 %: en los dos
-últimos casos el aviso aparece.
+El juego usa **su propia escala de tiempos**, más corta que la del modelo
+analítico. La razón es práctica y no de gusto:
 
-Además del promedio se reporta el **error relativo contra la solución
-analítica** del modelo M/M/c equivalente, que es la verificación del motor.
+- Un turno de 9 h de juego dura unos minutos reales (a velocidad ×1, un día
+  de juego son unos 9 minutos; a ×4, unos 2 minutos y cuarto).
+- El jugador tiene que **sentir** el reloj sin aburrirse. Ninguna acción
+  debe tardar más de ~20 segundos reales.
+- Con los tiempos del modelo analítico (2 a 6 h de reparación), un turno de
+  9 h no daba ni para 5 trabajos y la cuota era **inalcanzable por
+  construcción**: no sería un juego difícil, sería un juego imposible.
 
-## 6. Supuestos del modelo matemático
+| Magnitud | Modelo analítico | Juego |
+|---|---|---|
+| Diagnóstico (eléctrico / mecánico / carrocería) | 0.5 / 0.8 / 1.2 h | 0.20 / 0.30 / 0.45 h |
+| Reparación (eléctrico / mecánico / carrocería) | 2.0 / 3.5 / 6.0 h | 0.80 / 1.30 / 2.20 h |
+| Recepción, cotización, almacén, entrega | 0.1 h | 0.10 h |
+| Duración del día de juego | 24 h | 9 h de atención |
+
+**Lo que no cambia** es la estructura del modelo: las colas, los recursos
+compartidos entre el jugador y los NPCs, el cuello de botella, la relación
+L = λW y la realimentación de la reputación sobre la demanda. Lo que cambia
+es la escala, que es un parámetro de presentación, no del modelo conceptual.
+
+Por eso la comparación contra M/M/c (sección siguiente) se hace sobre el
+**modelo analítico**, no sobre el del juego: con servicio determinista por
+tipo de avería y llegadas restringidas a la ventana de atención, el
+subsistema de diagnóstico del juego no es un M/M/c exacto y la comparación
+sería engañosa.
+
+## 7. La validación del modelo (se conserva)
+
+El modelo de **diagnóstico** sigue siendo comparable con un M/M/c cuando el
+servicio es exponencial. En el juego el tiempo de servicio es **determinista
+por tipo**, no exponencial, así que la comparación exacta ya no aplica.
+
+**Pero el modelo de llegadas y de espera por puesto sí lo es.** Por eso se
+mantiene la verificación: con un escenario de un solo tipo de avería y
+servicio exponencial (el modo `validacion`), el motor debe seguir
+coincidiendo con la solución analítica dentro del 0.5 %.
+
+> Esta verificación es la que garantiza que **el motor de eventos discretos
+> sigue siendo correcto** aunque se le hayan añadido la economía, los NPCs
+> y el jugador. Si el motor de fondo se rompió, la partida dejaría de
+> reflejar la realidad del taller, y eso es justo lo que la asignatura pide
+> evitar.
+
+## 8. Supuestos del modelo matemático
 
 | # | Supuesto | Justificación | Riesgo si es falso |
 |---|---|---|---|
-| S1 | Tiempos de servicio exponenciales | Es lo que hace el modelo comparable con M/M/c y con Little | Los tiempos reales son más agrupados → el taller se ve más vacío de lo que es |
-| S2 | Las llegadas son Poisson | Comportamiento estándar de demanda de servicios | Picos reales más altos → subestima la saturación |
-| S3 | Un tipo de avería por OT, fijado al llegar | Simplifica; en la realidad una OT puede traer varios problemas | Subestima el trabajo total |
-| S4 | La decisión del presupuesto es independiente del monto | El modelo no maneja dinero | La tasa de rechazo real varía con el precio |
-| S5 | Las refacciones son fungibles entre tipos | No hay surtidos | El bloqueo real puede ser mayor o menor |
-| S6 | El cliente que rechaza se va para siempre | No hay recompra modelada | El taller real pierde menos demanda de la que se calcula |
-| S7 | La reposición es periódica y de lote fijo | Regla de negocio sencilla | Con inventario crítico, el bloqueo depende del momento del ciclo |
-| S8 | Los trabajos no se cancelan por otra causa | Solo hay dos desenlaces: atendido o rechazado | — |
-
-**El supuesto S1 es el más importante.** Está anotado en el reporte porque es el
-que más impacto tiene en la interpretación de los resultados: un modelo
-exponencial **subestima el percentil 90** (tiempos de servicio reales están más
-concentrados alrededor de su media, así que la cola se mueve menos de lo que el
-modelo supone).
-
-## 7. Verificación contra teoría
-
-El modelo de **diagnóstico** es un M/M/c con:
-- `λ = 18 llegadas / 9 h de horario = 2.0 llegadas/h` (tasa dentro del
-  horario). Para la solución de estado estacionario se usa la tasa media
-  diaria, `18/24 = 0.75 llegadas/h`, porque el taller sigue trabajando
-  fuera del horario de atención.
-- `μ_d` = media ponderada de los tiempos de diagnóstico
-- `c` = bahías de diagnóstico
-
-Y el de **reparación** es M/M/c con `c` = mecánicos y `λ` = las llegadas que
-superan el presupuesto.
-
-Las fórmulas analíticas usadas (Little, M/M/c de Pollaczek-Khinchine):
-
-```
-a  = λ / μ                            carga ofrecida
-ρ  = a / c                            estabilidad: ρ < 1
-P0 = [Σ(n=0..c-1) a^n/n! + a^c/(c!(1-ρ))]⁻¹
-
-P_espera = P0 · a^c / (c!·(1-ρ))      probabilidad de tener que esperar
-Lq = P_espera · ρ / (1-ρ)
-L  = Lq + a
-W  = L / λ        Wq = Lq / λ
-```
-
-> **OJO con la forma de `Lq`.** La expresión `P0 · ρ^c / (c!·(1-ρ)²)` es
-> **incorrecta**: le falta el factor `(c·ρ)^c`. Durante el desarrollo del
-> proyecto esa versión daba 0.1050 para un caso donde Erlang-C da 0.1751, y
-> el simulador daba 0.1828 — un 74 % de diferencia. El error estaba en la
-> fórmula, no en el motor, y se detectó porque la comparación analítica es la
-> puerta de la fase F4. La forma correcta es la de Erlang-C, escrita arriba.
-> Ver `tests/test_analitico.c`, que contrasta contra dos referencias
-> independientes.
-
-**Cuándo la comparación es exacta.** Sólo cuando se cumplen las dos
-condiciones:
-
-1. **Un solo tipo de avería**, para que el servicio sea una exponencial pura
-   y no una mezcla.
-2. **El taller abre las 24 h**, para que las llegadas sean estacionarias.
-
-El escenario `datos/escenarios/validacion-mmc.json` cumple las dos, y ahí el
-error del motor contra la fórmula es de **0.20 %** en W. En los demás
-escenarios la comparación es aproximada, y la interfaz lo dice.
-
-El motor se valida contra estas fórmulas: si el error relativo se sale del
-intervalo de confianza, **el modelo se corrige, no el número**.
+| S1 | El tiempo de servicio es determinista por tipo | Hace el juego de triage, no de ritmo | La variabilidad real haría el juego más ruidoso |
+| S2 | Las llegadas son Poisson en la ventana | Comportamiento estándar de demanda | Picos reales más altos |
+| S3 | La disposición a pagar se sortea una vez por cliente | Un cliente tiene un presupuesto, no lo recalcula | En la realidad puede negociar |
+| S4 | El proveedor tarda 24 h y cobra por lote | Simplifica el almacén | El stock real depende del proveedor |
+| S5 | La reputación afecta solo a la demanda | Los proveedores no te distinguen | Un buen nombre abre precios |
+| S6 | El trabajo continúa aunque el jugador no esté | Es la clave del diseño | — |
+| S7 | Los empleados trabajan a velocidad de empleado | Da sentido a contratar | — |
+| S8 | El juego no modela calidad de trabajo | Fuera de alcance declarado | Un mal trabajo no tiene castigo |
 
 ## Ver también
 
-- [[02-modelo-del-negocio]] — el proceso en palabras
-- [[09-prng-generador]] — el generador de números
+- [[02-modelo-del-negocio]] — el proceso y los puestos
+- [[09-prng-generador]] — el generador
 - [[08-reporte]] — resultados y validación

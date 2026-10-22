@@ -4,172 +4,28 @@ proyecto: Simulador de Taller de Reparación
 estado: aprobado
 ---
 
-# Reporte: Simulador de Operaciones de un Taller de Reparación (SOTR)
+# Reporte: SOTR — Simulador de Taller de Reparación
 
 **Materia:** Simulación · **Unidad:** 3
 **Autor:** Sirus521
-**Código:** `https://github.com/sirus521/SimuladorU3`
+**Código:** <https://github.com/sirus521/SimuladorU3>
 
 ---
 
 ## 1. Resumen
 
-Se construyó un simulador de eventos discretos de un taller de reparación
-automotriz, con el motor de simulación escrito en C y una interfaz web que
-consume la API del propio servidor en C.
+Se construyó un **videojuego de simulación en primera persona** de un taller
+de reparación. El motor de eventos discretos está escrito en **C** y es
+autoritativo: el navegador no simula nada, sólo manda acciones y dibuja el
+estado que le devuelve el servidor.
 
-El simulador responde cuatro preguntas de operación —cuánto tarda un vehículo
-en salir, cuánto se cierra al día, qué tan saturado está el taller y si el
-cuello de botella son las personas o el almacén— con cada cifra acompañada de
-su **intervalo de confianza al 95 %**, calculado sobre 30 réplicas
-independientes.
+El jugador **ocupa los puestos** del taller —recibe, diagnostica, cotiza,
+compone refacciones, repara y entrega— y puede contratar personal que haga lo
+mismo. El objetivo es **sobrevivir 30 días cumpliendo una cuota diaria de
+trabajos entregados**, sin quebrar y sin perder la reputación.
 
-**Resultado principal.** En el escenario de referencia (18 vehículos/día, 2
-bahías de diagnóstico, 3 mecánicos), el TPR medio es **9.29 h ± 0.82 h** y se
-entregan **15.04 ± 0.26** órdenes de trabajo por día. La etapa de
-**reparación** es el cuello de botella (69.8 % de utilización) frente al
-diagnóstico (28.0 %). El almacén de refacciones no es el problema en este
-escenario: sólo el 6.8 % de las OT queda esperando una pieza.
-
-**Verificación.** En un escenario donde el subsistema de diagnóstico es
-exactamente un M/M/c, el simulador coincide con la solución analítica de
-Pollaczek-Khinchine: **error relativo de 0.20 %** en la permanencia media, de
-0.7 % en la longitud de la cola y de 0.2 % en el número en el sistema.
-
----
-
-## 2. Objetivos y alcance
-
-El objetivo está detallado en [[01-definicion-del-simulador]]. En resumen: la
-pregunta que ordena el proyecto es **¿el cuello de botella del taller es la
-gente o son las refacciones?** y la interfaz tiene que ayudar a responderla.
-
-**Dentro del alcance:** el proceso completo (recepción → diagnóstico →
-presupuesto → refacciones → reparación → entrega), tamaño del taller
-configurable, réplicas con IC 95 %, comparación contra la solución analítica,
-e interfaz web de control.
-
-**Fuera del alcance:** dinero y rentabilidad, calidad del trabajo, rotación
-de personal, llegada estacional por hora, persistencia y usuarios. El
-supuesto más importante que queda fuera es que **el cliente que rechaza el
-presupuesto se va para siempre** y que el que recibe el vehículo reparado
-siempre regresa.
-
----
-
-## 3. El modelo
-
-El proceso completo, con sus recursos, colas y reglas, está en
-[[02-modelo-del-negocio]]. Las distribuciones, los eventos y los supuestos
-numéricos están en [[03-modelo-matematico]].
-
-### 3.1 Estructura del modelo
-
-| Etapa | Recurso | Cola que genera | Distribución del servicio |
-|---|---|---|---|
-| Diagnóstico | 2 bahías | `cola_diagnostico` | Exponencial (0.5 / 0.8 / 1.2 h) |
-| Presupuesto | — | `espera_decision` | Exponencial (0.5 h) + Bernoulli(0.85) |
-| Refacciones | almacén | `cola_refacciones` | Reposición periódica (48 h) |
-| Reparación | 3 mecánicos | `cola_reparacion` | Exponencial (2.0 / 3.5 / 6.0 h) |
-
-Las llegadas siguen un proceso de Poisson **restringido al horario de
-atención** (09:00–18:00). Los vehículos que ya entraron siguen su curso
-aunque el taller cierre, lo que mantiene una sola tasa de servicio.
-
-### 3.2 Aleatoriedad
-
-Toda la aleatoriedad sale de un PRNG propio: un LCG de 16 bits con periodo
-máximo 65536 y una etapa de mezcla xorshift biyectiva, documentado en
-[[09-prng-generador]]. Cada réplica usa su propia semilla, de modo que las
-réplicas son **independientes** —requisito del intervalo de confianza— y cada
-una es reproducible por separado.
-
-El generador se verifica contra las tablas de la unidad anterior: las 12
-primeras iteraciones de las semillas 1 y 2026 se reproducen exactamente, el
-periodo es 65536, y sobre el ciclo completo cada cara del dado aparece
-10922 veces con 4 rechazos.
-
-### 3.3 Periodo de calentamiento
-
-El taller arranca vacío y la cola se llena durante los primeros días. Medir
-desde el primer minuto mezcla el transitorio con el régimen permanente y
-**subestima el TPR**: sin calentamiento, el TPR medido crecía con el horizonte
-(16.5 h a 30 días, 26.7 h a 60, 38.1 h a 90), no porque el taller empeorara
-sino porque cada horizonte incluía más días de cola acumulada.
-
-Por eso el motor **descarta los primeros días** (10 por defecto, configurable)
-y sólo acumula estadísticas a partir de ahí.
-
-Además, cada corrida reporta si el sistema **está en estado estacionario**,
-comparando el TPR de la primera y la segunda mitad del periodo medido. Si
-difieren más de 15 %, el simulador lo dice, porque en un taller saturado el
-número publicado depende del horizonte y no describe un régimen.
-
----
-
-## 4. Verificación y validación
-
-### 4.1 Verificación del motor contra la solución analítica
-
-El escenario `validacion-mmc` abre las 24 h y usa un solo tipo de avería, de
-modo que el subsistema de diagnóstico es un **M/M/c exacto**. La comparación
-se hace contra Pollaczek-Khinchine:
-
-| Magnitud | Simulado | Teórico M/M/c | Error relativo |
-|---|---|---|---|
-| Lq (longitud de cola) | 0.0711 | 0.0706 | **0.7 %** |
-| L (número en el sistema) | 0.7053 | 0.7039 | **0.2 %** |
-| W (permanencia media) | 0.8464 h | 0.8447 h | **0.20 %** |
-
-El error está muy por debajo del margen de ruido de la simulación, lo que
-confirma que el motor de eventos discretos, la cola de prioridad y los
-acumuladores de estadística funcionan como deben.
-
-> **Un bug que esta comparación encontró.** Durante el desarrollo, la fórmula
-> de `Lq` que se había escrito a mano estaba mal: le faltaba el factor
-> `(c·ρ)^c`, y daba 0.1050 contra los 0.1751 que produce Erlang-C. El
-> simulador, en cambio, daba 0.1828. Es decir, **el motor estaba bien y la
-> fórmula estaban mal**, con un 74 % de diferencia. Se detectó justamente
-> por tener la comparación analítica como puerta de la fase F4, y se
-> corrigió la fórmula, no los números. La historia completa está en
-> [[06-bitacora-y-decisiones]].
-
-### 4.2 Validación del modelo
-
-| Prueba | Resultado |
-|---|---|
-| Uniformidad de la exponencial | Chi-cuadrado p > 0.05 |
-| Uniformidad del generador | Kolmogorov-Smirnov p > 0.05 |
-| Uniformidad del dado | 10922 apariciones por cara sobre el ciclo completo |
-| Reproducibilidad | Misma semilla ⇒ resultado idéntico (bit a bit) |
-| Consistencia interna | Little: L ≈ λ·W se cumple |
-| Estado estacionario | Deriva del TPR entre mitades: 1.0 % (base) |
-
-### 4.3 El alcance de la comparación analítica
-
-En el escenario base la comparación contra M/M/c es **aproximada**, y la
-interfaz lo dice explícitamente. Hay dos razones, y conviene tenerlas claras
-porque es la diferencia entre "el modelo es correcto" y "el modelo se parece
-a un M/M/c":
-
-1. **Las llegadas no son estacionarias.** Se concentran en 9 horas, así que la
-   cola se llena en el turno y se drena de noche. El estado estacionario que
-   supone la fórmula no se alcanza.
-2. **El servicio es una mezcla de exponenciales** (tres tipos de avería), no
-   una exponencial pura.
-
-Por eso el error aparente en W es de 52 % en el escenario base, y por eso la
-**verificación rigurosa** se hace en el escenario dedicado, donde el error
-baja a 0.20 %.
-
----
-
-## 5. Resultados
-
-Todos los números salen de `make` + `bin/simulador --escenario … --tabla`, con
-30 réplicas y semilla 2026.
-
-### 5.1 Escenario base (18 vehículos/día, 2 bahías, 3 mecánicos)
+**El resultado del modelo de fondo** (el motor de simulación clásico, que es
+la parte que se valida contra la teoría) para el escenario de referencia:
 
 | Métrica | Valor | IC 95 % |
 |---|---|---|
@@ -177,119 +33,276 @@ Todos los números salen de `make` + `bin/simulador --escenario … --tabla`, co
 | TPR percentil 90 | 18.237 h | ± 1.673 |
 | OT entregadas por día | 15.042 | ± 0.258 |
 | Presupuestos rechazados | 14.97 % | ± 0.80 |
-| Bloqueo por refacción | 6.77 % | ± 2.21 |
-| Ociosidad del taller | 12.74 % | ± 1.34 |
+| Bloqueo por refacciones | 6.77 % | ± 2.21 |
 | Utilización diagnóstico | 28.02 % | ± 0.82 |
 | Utilización reparación | **69.84 %** | ± 1.92 |
-| Cola media diagnóstico | 0.365 | ± 0.037 |
-| Cola media reparación | **2.315** | ± 0.395 |
-| Estado estacionario | sí (deriva 1.0 %) | |
 
-**Lectura.** La reparación es el cuello de botella: 69.8 % de utilización
-contra 28.0 % en diagnóstico, y una cola media de 2.3 vehículos contra 0.37.
-El diagnóstico no es el problema. Añadir un cuarto mecánico ayudaría; añadir
-una tercera bahía, casi nada.
+La **reparación** es el cuello de botella, con casi el 70 % de utilización
+contra el 28 % del diagnóstico.
 
-El 15 % de presupuestos rechazados es un **punto ciego del modelo**: no se
-sabe si el cliente se fue por el precio o por el tiempo de espera, porque el
-modelo no maneja dinero. Es la primera extensión que haría falta.
+**Verificación contra la solución analítica.** En el escenario donde el
+subsistema de diagnóstico es un M/M/c exacto, el motor coincide con
+Pollaczek-Khinchine con un **error relativo del 0.20 %** en la permanencia
+media, 0.7 % en la longitud de la cola y 0.2 % en el número en el sistema.
 
-### 5.2 Escenario saturado (24 vehículos/día, 1 bahía, 2 mecánicos)
+**El juego es ganable y perdible.** Con el equipo completo (un recepcionista,
+tres mecánicos, un almacenista y un cotizador) se ganan los 30 días con 26 a
+29 jornadas de cuota cumplida. Sin contratar a nadie se pierde en el día 3, y
+con el equipo mínimo en el día 6.
 
-| Métrica | Valor |
+---
+
+## 2. Objetivos y alcance
+
+Detallado en [[01-definicion-del-simulador]]. En resumen: el objetivo es
+**sobrevivir 30 días con la cuota diaria cumplida**, y la pregunta que ordena
+el juego es **si el cuello de botella del taller son las personas o el
+almacén**.
+
+**Dentro del alcance:** los seis puestos jugables en primera persona, el reloj
+en tiempo real con pausa, la economía completa (precios, nómina, alquiler,
+refacciones), la cuota y la reputación, la contratación de personal con IA por
+puesto, el parte diario y la pantalla final, y el panel de análisis con el
+motor por lotes y su validación analítica.
+
+**Fuera del alcance:** calidad de la reparación, recompra de clientes,
+rotación de personal, llegadas estacionales por hora, dinero del proveedor,
+personalización del local, guardado de partida y multijugador.
+
+---
+
+## 3. El modelo
+
+El proceso de negocio está en [[02-modelo-del-negocio]] y el modelo
+matemático en [[03-modelo-matematico]].
+
+### 3.1 El cambio de fondo: el trabajo lo inicia alguien
+
+En el motor de análisis, un recurso se ocupa solo en cuanto queda libre. En
+el juego **no**: un puesto sólo avanza si el jugador o un empleado lo
+inician. De ahí salen la cola, la espera y la presión.
+
+| Puesto | Quién lo inicia | Duración (eléctrico / mecánico / carrocería) |
+|---|---|---|
+| Recepción | jugador o recepcionista | 0.10 h |
+| Diagnóstico | jugador o mecánico | 0.20 / 0.30 / 0.45 h |
+| Cotización | jugador o cotizador | 0.10 h |
+| Almacén | jugador o almacenista | 0.10 h |
+| Reparación | jugador o mecánico | 0.80 / 1.30 / 2.20 h |
+| Entrega | jugador o recepcionista/cotizador | 0.10 h |
+
+### 3.2 Aleatoriedad
+
+Todo sale del **PRNG propio**: LCG de 16 bits con periodo máximo 65536 y
+mezcla xorshift biyectiva ([[09-prng-generador]]). Cada partida tiene su
+semilla, así que **la misma semilla y las mismas acciones reproducen la
+partida exactamente**.
+
+El PRNG se verifica contra las tablas de la unidad anterior: las 12 primeras
+iteraciones de las semillas 1 y 2026 se reproducen exactamente, y sobre el
+ciclo completo cada cara del dado aparece 10 922 veces con 4 rechazos.
+
+### 3.3 La economía
+
+| Concepto | Valor |
 |---|---|
-| TPR medio | 147.560 h ± 7.644 |
-| Cola media reparación | 70.124 ± 4.468 |
-| Utilización reparación | 100.00 % |
-| Bloqueo por refacción | 80.53 % |
-| Estado estacionario | **NO** (deriva 56.8 %) |
+| Precios de venta | $6 000 / $11 000 / $18 000 |
+| Coste del material | $1 500 / $3 000 / $5 000 |
+| Nómina | $2 000 por empleado al día |
+| Alquiler | $4 000 al día |
+| Lote de refacciones | 20 piezas por $1 500 (llega al abrir del día siguiente) |
+| Lote urgente | 20 piezas por $3 000 (llega en 1 hora) |
+| Saldo inicial | $25 000 |
+| Cuota diaria | 10 trabajos |
+| Reputación | 0 a 100; +3 por entrega, −2 por cliente perdido |
 
-El taller no tiene capacidad para esa demanda. La cola de reparación crece sin
-límite, el TPR crece con el horizonte y el simulador **lo advierte** en lugar
-de publicar un número engañoso. Este escenario sirve para mostrar por qué el
-diagnóstico de estado estacionario importa.
+El coste del material se imputa **al entregar**, no al tomar la pieza: en una
+empresa el material se compra antes y el ingreso se reconoce al entregar, y
+cargar la pieza al principio hacía que un día en el que se empezaba mucho
+trabajo pero no se entregaba nada dejara al taller sin caja.
 
-### 5.3 Escenario con atasco de refacciones (4 unidades de stock)
+La reputación realimenta la demanda: el factor va de 0.60 (reputación 0) a
+1.40 (reputación 100). Un taller con mala fama recibe menos clientes, y eso
+es lo que hace que perder sea una espiral y no un simple contador.
 
-| Métrica | Valor |
+### 3.4 La escala de tiempos del juego
+
+El juego usa una escala de tiempos **más corta** que el modelo analítico
+([[03-modelo-matematico]] § 6). No es una decisión estética: un turno de
+9 h de juego dura unos minutos reales, y con los tiempos del modelo
+analítico (2 a 6 h de reparación) la cuota de 10 trabajos era inalcanzable
+por construcción. La **estructura** del modelo no cambia.
+
+---
+
+## 4. Verificación y validación
+
+### 4.1 Verificación del motor contra la solución analítica
+
+Escenario `validacion-mmc`: abre las 24 h y usa un solo tipo de avería, así
+que el subsistema de diagnóstico es un M/M/c exacto.
+
+| Magnitud | Simulado | Teórico M/M/c | Error |
+|---|---|---|---|
+| Lq (cola) | 0.0711 | 0.0706 | 0.7 % |
+| L (sistema) | 0.7053 | 0.7039 | 0.2 % |
+| W (permanencia) | 0.8464 h | 0.8447 h | **0.20 %** |
+
+El error está muy por debajo del margen de ruido de la simulación, lo que
+confirma que el motor de eventos discretos, la cola de prioridad y los
+acumuladores funcionan como deben.
+
+### 4.2 El alcance de la comparación
+
+En el escenario base la comparación contra M/M/c es **aproximada**, y la
+interfaz lo dice explícitamente. Hay dos razones: las llegadas se concentran
+en la ventana de atención (no son estacionarias) y el servicio es una mezcla
+de exponenciales (tres tipos de avería), no una exponencial pura. Por eso el
+error aparente en W es de 52 % en el escenario base y de 0.20 % en el de
+validación.
+
+### 4.3 Otras pruebas
+
+| Prueba | Resultado |
 |---|---|
-| TPR medio | 408.716 h ± 11.801 |
-| OT entregadas por día | 0.515 |
-| Bloqueo por refacción | **85.03 %** |
-| Utilización reparación | 2.21 % |
-| Estado estacionario | **NO** (deriva 62.3 %) |
+| PRNG contra las tablas de la unidad anterior | 85 684 comprobaciones, todas en verde |
+| Chi-cuadrado y Kolmogorov-Smirnov de las distribuciones | 400 011 comprobaciones |
+| Reproducibilidad de la partida | misma semilla y acciones ⇒ partida idéntica |
+| Contrato de la API de partida | 22 comprobaciones |
+| Balance del juego | ganable con equipo completo, perdible sin él |
 
-El resultado más ilustrativo del proyecto: **el taller está ocioso el 97.8 %
-del tiempo y, aun así, no entrega vehículos.** Mecánicos sin trabajo,
-vehículos parados y el cuello de botella íntegramente en el almacén. Es
-exactamente el escenario que justifica tener la métrica de bloqueo por
-refacciones, y la respuesta a la pregunta del objetivo: *aquí el cuello de
-botella no son las personas*.
+**Total: 8 suites, 485 904 comprobaciones, todas en verde.**
 
-### 5.4 Escenario de validación M/M/c
+---
+
+## 5. Resultados
+
+### 5.1 El modelo por lotes (escenario base)
 
 | Métrica | Valor | IC 95 % |
 |---|---|---|
-| TPR medio | 8.329 h | ± 0.521 |
-| Cola media diagnóstico | 0.071 | ± 0.005 |
-| Utilización reparación | 80.13 % | ± 1.17 |
-| Error en W contra la fórmula | **0.20 %** | — |
-| Comparación exacta | sí | — |
+| TPR medio | 9.285 h | ± 0.819 |
+| TPR percentil 90 | 18.237 h | ± 1.673 |
+| OT entregadas por día | 15.042 | ± 0.258 |
+| Presupuestos rechazados | 14.97 % | ± 0.80 |
+| Bloqueo por refacciones | 6.77 % | ± 2.21 |
+| Ociosidad del taller | 12.74 % | ± 1.34 |
+| Utilización diagnóstico | 28.02 % | ± 0.82 |
+| Utilización reparación | 69.84 % | ± 1.92 |
+| Cola media diagnóstico | 0.365 | ± 0.037 |
+| Cola media reparación | 2.315 | ± 0.395 |
+| Estado estacionario | sí (deriva 1.00 %) | |
+
+### 5.2 El juego, con partidas completas
+
+| Equipo | Resultado | Días con cuota | Reputación | Saldo final |
+|---|---|---|---|---|
+| Ninguno | **derrota**: "los clientes se fueron" | 0 | 64 | — |
+| Mínimo (1 mecánico) | **derrota**: "los clientes se fueron" | — | 62 | — |
+| Base (3 mecánicos) | **victoria**: "sobrevivió al mes" | 26–28 de 30 | 96–100 | ~$2.07 M |
+| Ampliado (5 mecánicos) | victoria | 28 de 29 | 100 | ~$1.49 M |
+
+La pérdida con el equipo mínimo no es por falta de producción, sino por
+**material**: la demanda de piezas escala con las entregas, y sin reponer el
+almacén el taller se para a mitad de partida. Es exactamente la decisión que
+el juego quiere que el jugador tome.
+
+### 5.3 El escenario de atasco de refacciones
+
+| Métrica | Valor |
+|---|---|
+| Bloqueo por refacción | 85.03 % |
+| Utilización reparación | 2.21 % |
+| TPR medio | 408.7 h |
+
+El resultado más ilustrativo: **el taller está ocioso el 97.8 % del tiempo y
+aun así no entrega vehículos**. Mecánicos sin trabajo, vehículos parados y el
+cuello de botella íntegramente en el almacén.
 
 ---
 
 ## 6. La interfaz
 
-Descripción completa en [[04-parte-visual]]. La interfaz es un **tablero de
-control**, no un juego: cinco zonas —parámetros, tarjetas de KPI, planta del
-taller, series de colas, y las gráficas de comparación— con la regla de que
-**ninguna cifra aparece sin su intervalo de confianza**.
+Descripción completa en [[04-parte-visual]]. La escena es 3D en primera
+persona, con geometría **totalmente procedural**: no hay modelos ni texturas
+externas, así que el proyecto no depende de descargas ni tiene temas de
+licencias. Se dibuja a 60 fps.
 
-La planta se alimenta de los valores medios y finales del horizonte; no se
-anima en tiempo real. Es una decisión consciente: animar la simulación en
-vivo es un efecto visual que no aporta información que las series no den, y
-complicaría el contrato de la API sin ganar nada.
+El HUD lleva día y hora, saldo, reputación, cuota, contadores de cola por
+puesto, el prompt de acción contextual (`[E] Atender`) y los controles de
+velocidad y pausa. Los paneles de contratación, almacén y cotización se
+abren con **T**, **B** y al cotizar.
 
----
-
-## 7. Trabajo futuro
-
-1. **Modelar el precio.** El 15 % de rechazo es la mayor incógnita del
-   modelo, y un precio como variable explicativa es lo que permitiría
-   simular políticas de descuento.
-2. **Reordenamiento de llegadas.** El supuesto S1 (servicio exponencial)
-   subestima el percentil 90. Un servicio Erlang de 2 fases es más realista
-   y se puede comparar con la misma fórmula.
-3. **Comparación lado a lado de escenarios.** Hoy se comparan corriendo dos
-   veces; la interfaz podría mostrar la diferencia directamente.
-4. **Datos reales.** Todos los parámetros son supuestos documentados. Con
-   una bitácora de un taller real, el modelo pasaría de verificado a
-   validado.
+**El servidor manda las reglas económicas** (precios, nómina, plazos) y el
+cliente las consume: el navegador no duplica la lógica del negocio, así que
+no pueden desincronizarse.
 
 ---
 
-## 8. Cómo reproducir estos resultados
+## 7. Lo que se encontró por el camino
+
+Tres fallos que sólo aparecieron al construir el juego, y que están
+documentados porque son la parte que más cuesta ver:
+
+1. **La fórmula de `Lq` del módulo analítico estaba mal** (le faltaba el
+   factor `(c·ρ)^c`). Daba 0.1050 donde Erlang-C da 0.1751: un 74 % de
+   diferencia. Lo detectó la comparación con la solución analítica, que es
+   la puerta de la fase F4. El motor estaba bien; la fórmula no.
+2. **El reparto del trabajo de los mecánicos causaba inanición de cola**:
+   con la regla de "atender la cola más larga", los dos mecánicos se iban
+   siempre al diagnóstico (su cola siempre era la más larga) y la
+   reparación no recibía a nadie.
+3. **El día se cerraba dos veces**: al re-encolar un evento futuro se le
+   daba un orden nuevo, y el cierre de día ya agendado se duplicaba. La
+   nómina se cobraba por duplicado y el taller quebraba el primer día.
+
+Cada uno tiene ahora su prueba en `tests/test_juego_npc.c` y
+`tests/test_analitico.c`.
+
+---
+
+## 8. Trabajo futuro
+
+1. **Modelar el precio de forma más fina**: la disposición a pagar del
+   cliente es un número; un modelo por tipo de avería y antigüedad del
+   vehículo daría más juego.
+2. **Servicios de Erlang** en lugar de tiempos deterministas: con ruido
+   real, el percentil 90 dejaría de ser tan fácil de acotar.
+3. **Audio y realimentación visual** de las esperas: el jugador debería
+   *notar* que una cola crece antes de mirar el HUD.
+4. **Guardar la partida** en el servidor, para poder continuar al día
+   siguiente.
+5. **Más tipos de avería** y un modo de juego en el que el jugador elige
+   el tipo de taller, con sus consequences en la economía.
+
+---
+
+## 9. Cómo reproducir estos resultados
 
 ```bash
 git clone https://github.com/sirus521/SimuladorU3
 cd SimuladorU3
 make && make web && make test
 
+# El modelo por lotes:
 ./bin/simulador --escenario datos/escenarios/base.json --tabla
 ./bin/simulador --escenario datos/escenarios/validacion-mmc.json --tabla
+
+# El juego:
+make run      # http://127.0.0.1:8080
 ```
 
-Con la semilla 2026 y 30 réplicas, los números de la sección 5 se reproducen
-exactamente. Cualquier persona con el repositorio obtiene las mismas cifras.
+Con la semilla 2026 y 30 réplicas, los números de la sección 5.1 se
+reproducen exactamente.
 
 ---
 
 ## Ver también
 
-- [[01-definicion-del-simulador]] — nombre, objetivo y alcance
-- [[02-modelo-del-negocio]] — el proceso de negocio
+- [[01-definicion-del-simulador]] — objetivo y alcance
+- [[02-modelo-del-negocio]] — el proceso y la economía
 - [[03-modelo-matematico]] — distribuciones, eventos y supuestos
-- [[04-parte-visual]] — la interfaz
+- [[04-parte-visual]] — la escena 3D y el HUD
 - [[05-plan-de-trabajo]] — el método y las fases
-- [[06-bitacora-y-decisiones]] — las decisiones y el bug de la fórmula
+- [[06-bitacora-y-decisiones]] — las decisiones y los bugs
 - [[09-prng-generador]] — el generador de números

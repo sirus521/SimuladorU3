@@ -43,11 +43,10 @@ mmc_t analitico_mmc(double lambda, double mu, int c)
 
     r.p0 = 1.0 / suma;
 
-    /* Lq = P0 · a^c · ρ / (c! · (1-ρ)²), con a = λ/μ = c·ρ.
+    /* Lq = P_espera · ρ/(1-ρ), con P_espera = P0 · a^c/(c!·(1-ρ)).
      *
-     * Equivale a la forma de Erlang-C: Lq = P_espera · ρ/(1-ρ), donde
-     * P_espera = P0 · a^c/(c!(1-ρ)) es la probabilidad de que un cliente
-     * tenga que esperar.
+     * Es la forma de Erlang-C, y equivale a
+     *     Lq = P0 · a^c · ρ / (c! · (1-ρ)²)      con a = λ/μ = c·ρ
      *
      * OJO: la forma P0·ρ^c/(c!(1-ρ)²) NO es la correcta: le falta el
      * factor (c·ρ)^c. Esa versión se detectó comparando contra Erlang-C

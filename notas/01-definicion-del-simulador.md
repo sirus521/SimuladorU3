@@ -1,91 +1,135 @@
 ---
 tipo: definicion
 proyecto: Simulador de Taller de Reparación
-estado: aprobado
+estado: borrador
 ---
 
 # Definición del simulador
 
+> **Nota de alcance.** Este proyecto empezó como un panel de análisis y se
+> reorientó como **videojuego de simulación**, que es lo que pidió la
+> asignatura. Esta nota y las tres siguientes son el documento de diseño del
+> juego. El historial del cambio está en [[06-bitacora-y-decisiones]].
+
 ## Nombre
 
-**Simulador de Operaciones de un Taller de Reparación Automotriz (SOTR)**
+**SOTR — Taller de Reparación**
 
-Alternativa corta para el título del reporte: **SOTR — Simulador de Taller de Reparación**.
+Nombre corto para menciones: **SOTR**. Para la portada del reporte:
+*"SOTR: Simulador, videojuego de un taller de reparación"*.
+
+## Qué es
+
+Un **videojuego de simulación en primera persona** donde el jugador dirige un
+taller de reparación. El jugador **ocupa los puestos**: recibe a los clientes,
+diagnostica averías, presenta presupuestos, compra refacciones, repara y
+entrega los vehículos. Contratar personal permite delegar puestos y pasar a
+ocuparse de lo que más apriete.
+
+El reloj corre en tiempo real (un día de juego dura unos minutos reales) y se
+puede pausar. La simulación que hay debajo no es un adorno: **es un modelo de
+eventos discretos en C** que decide cuándo llega un cliente, cuánto tarda una
+reparación y qué clientes se cansan de esperar. El jugador no compite contra
+el azar, compite contra el modelo.
 
 ## Objetivo
 
-Estimar, para un taller de reparación de tamaño configurable, **cuánto tarda un
-vehículo en salir** y **qué tan saturado está el taller**, de modo que se puedan
-evaluar decisiones de capacidad sin tener que contratar más personal ni ampliar
-el edificio para cuando la demanda crezca.
+**Sobrevivir 30 días de taller cumpliendo la cuota diaria de trabajos
+entregados, sin quebrar y sin perder la reputación del negocio.**
 
-En concreto, el simulador responde cuatro preguntas:
+En concreto, el juego pide tres cosas a la vez:
 
-1. **Tiempo de permanencia (TPR).** ¿Cuánto tiempo pasa un vehículo dentro del
-   taller desde que entra hasta que se lo entrega? (media y percentil 90)
-2. **Capacidad.** ¿Cuántas órdenes de trabajo cierra el taller por día?
-3. **Saturación.** ¿Qué porcentaje del tiempo están ocupadas las bahías de
-   diagnóstico y los mecánicos?
-4. **Fugas.** ¿Qué porcentaje de los presupuestos se rechaza y qué porcentaje de
-   trabajos se atasca esperando una refacción?
+| Objetivo | Cómo se mide | Qué pasa si falla |
+|---|---|---|
+| **Cumplir la cuota** | Trabajos entregados por día ≥ cuota | Cada día incumplido baja la reputación |
+| **No quebrar** | El saldo del taller sigue en positivo | Si el saldo queda negativo, se acabó |
+| **Mantener la reputación** | Reputación > 0 | Si llega a cero, se acabou |
 
-La pregunta que ordena todo lo demás es la cuarta: **¿el cuello de botella es
-la gente o son los refacciones?** Esa es la decisión real de un taller, y es la
-que el simulador tiene que ayudar a tomar.
+La tensión está en que los tres compiten entre sí: contratar personal ayuda
+a la cuota pero cuesta nómina, y subir el precio de los presupuestos mejora
+el saldo pero espanta clientes.
+
+## Condiciones de victoria y derrota
+
+| | Condición | Aviso en pantalla |
+|---|---|---|
+| **Victoria** | Llegar al día 30 con la cuota cumplida, saldo positivo y reputación > 0 | "El taller sobrevive al mes" |
+| **Derrota por reputación** | La reputación llega a 0 | "El taller perdió su fama" |
+| **Derrota por quiebra** | El saldo queda negativo al cerrar un día | "El taller quebró" |
+| **Derrota por inactividad** | 3 días seguidos sin cumplir la cuota | "Los clientes se fueron" |
 
 ## Alcance
 
 ### Dentro del alcance
 
-- Proceso de negocio completo de un taller: recepción, diagnóstico, presupuesto,
-  espera de refacciones, reparación y entrega.
-- Tamaño del taller variable: bahías de diagnóstico, mecánicos, inventario de
-  refacciones.
-- Demanda variable: llegadas por día y horario de atención.
-- Decisión de presupuesto del cliente: acepta o rechaza.
-- Métricas de operación con intervalo de confianza al 95 % y **réplicas
-  independientes** con semillas distintas.
-- Comparación contra la solución analítica de un modelo M/M/c equivalente, como
-  **verificación** del motor.
-- Interfaz web con tablero de control: planta del taller en vivo, tarjetas de
-  KPI, series temporales de colas, histograma de TPR y barras de utilización.
+- **Los 6 puestos del taller**, jugables en primera persona: recepción,
+  diagnóstico, cotización, almacén, reparación y entrega.
+- **Reloj de juego en tiempo real** con pausa, y turnos de día y noche.
+- **Economía completa**: precios de reparación, coste de refacciones, nómina
+  diaria, alquiler del local, saldo y flujo de caja.
+- **Contratación de personal** que ocupa los puestos por ti, con IA por
+  puesto.
+- **Cuota diaria** y **reputación** que reaccionan a tu desempeño.
+- **Tres tipos de avería** con tiempos, costes y precios distintos.
+- **Estadísticas de partida**: al final de cada día se ve el parte (entregas,
+  ingresos, tiempos de espera, clientes perdidos).
+- **El modelo de eventos discretos en C** como motor autoritativo, con su
+  PRNG propio y su validación analítica.
 
 ### Fuera del alcance
 
-- **No** modela la calidad del trabajo ni la recompra del cliente. El taller
-  siempre entrega bien el trabajo, así que el cliente siempre regresa. Es una
-  simplificación deliberada y está anotada en [[03-modelo-matematico]].
-- **No** modela la rotación de personal ni turnos. El taller se supone abierto
-  un número fijo de horas al día, con los mismos mecánicos.
-- **No** modela dinero: ni cotizaciones en pesos, ni facturación, ni utilidad.
-  Las métricas son de tiempo y de carga, no económicas.
-- **No** modela la llegada estacional por hora. Las llegadas dentro del horario
-  son estacionarias; entre días cambia la tasa.
-- **No** tiene persistencia en base de datos ni usuarios. Es una herramienta de
-  análisis, no un sistema de producción.
-- **No** es un juego. No hay puntaje, ni niveles, ni avatar. La parte visual es
-  un tablero de control para tomar decisiones, no algo jugable.
+- **No** es un juego de acción: no hay disparos, ni enemigos, ni combate. La
+  presión viene del reloj y de las colas.
+- **No** hay modo multijugador ni multijugador online.
+- **No** hay guardado de partida en la nube: la partida vive en memoria del
+  servidor mientras dura la sesión.
+- **No** se modela la **calidad de la reparación**: el trabajo se entrega
+  bien siempre. La consecuencia de un mal trabajo (cliente que no vuelve) no
+  está modelada.
+- **No** se modela la **reputación como recurso de la cadena de suministro**:
+  los proveedores no te tratan distinto por tu fama.
+- **No** hay personalización de taller (paredes, colores, música) más allá de
+  lo funcional.
+- **No** se modelan **modelos de vehículo ni marcas**: todos los clientes
+  llegan con una avería de un tipo, sin preferencia de marca.
 
 ### Criterio de aceptación del alcance
 
-> Si una pregunta no se puede responder con las métricas listadas arriba, o si
-> necesita dinero, calidad o multiplayer, queda fuera.
+> Si una función del juego no se puede sentir en menos de 30 segundos de
+> juego —porque el jugador ve la consecuencia en la cola, en el dinero o en
+> la reputación— no entra.
 
-## Cómo se usa
+## Cómo se juega (resumen)
 
-1. Se elige un escenario (un archivo JSON en `datos/` o el que trae la interfaz).
-2. Se corre la simulación con N réplicas y una semilla explícita.
-3. El motor devuelve métricas con su intervalo de confianza.
-4. Se comparan escenarios entre sí (por ejemplo, 2 vs 3 mecánicos) para ver qué
-   cambio mejora el TPR y a costa de qué.
+```
+   CLIENTE LLEGA
+        │
+        ▼
+   [TÚ · RECEPCIÓN]  registrar la entrada
+        │
+        ▼
+   [TÚ · DIAGNÓSTICO]  revisar y determinar la avería
+        │
+        ▼
+   [TÚ · COTIZACIÓN]  poner precio → el cliente acepta o se va
+        │
+        ├── no acepta ──► el cliente se va (reputación −)
+        ▼
+   [TÚ · ALMACÉN]  tomar o comprar refacciones
+        │
+        ▼
+   [TÚ · REPARACIÓN]  reparar
+        │
+        ▼
+   [TÚ · ENTREGA]  cobrar y despachar
+```
 
-La misma semilla y el mismo escenario **siempre** dan los mismos números. Eso es
-lo que hace que el resultado sea auditable: si un compañero lo corre, obtiene lo
-mismo.
+Cuando contratas gente, cada NPC ejecuta ese mismo flujo en su puesto. Tú
+liberas ese puesto y puedes atender otro.
 
 ## Ver también
 
-- [[02-modelo-del-negocio]] — el proceso paso a paso
-- [[03-modelo-matematico]] — las distribuciones y supuestos
-- [[04-parte-visual]] — qué se ve en pantalla
-- [[05-plan-de-trabajo]] — cómo se construye
+- [[02-modelo-del-negocio]] — el proceso y los puestos
+- [[03-modelo-matematico]] — las distribuciones y el modelo
+- [[04-parte-visual]] — la escena 3D y la interfaz
+- [[05-plan-de-trabajo]] — las fases
