@@ -1,3 +1,4 @@
+int g_tb_calls=0; int g_tb_none=0;
 /* juego.c — Motor de partida. Ver juego.h y notas/03-modelo-matematico.md.
  *
  * Idea central: el servicio **no empieza solo**. Un puesto sólo avanza si el
@@ -31,13 +32,22 @@ typedef enum {
     EV_FIN_PARTIDA
 } ev_juego_t;
 
-/* Puestos que puede ocupar un tipo de empleado. */
+/* Puestos que puede ocupar un tipo de empleado.
+ *
+ * El recepcionista y el cotizador cubren también la entrega: los dos están
+ * en el frente del local, que es donde se cobra. Si nadie atendiera la
+ * entrega, los vehículos repairing se quedaban parados en la cola de
+ * entrega y el taller no facturaba nada. */
 static const int PUESTOS_DE_EMPLEADO[EMPLEADO_N_TIPOS] = {
     PUESTO_RECEPCION,             /* recepcionista: recepción             */
     PUESTO_REPARACION,            /* mecánico: diagnóstico o reparación   */
     PUESTO_ALMACEN,               /* almacenista: almacén                 */
     PUESTO_COTIZACION             /* cotizador: cotización                */
 };
+
+/* Puestos alternativos, por tipo de empleado. */
+static const int PUESTOS_ALT_RECEPCIONISTA[2] = { PUESTO_RECEPCION, PUESTO_ENTREGA };
+static const int PUESTOS_ALT_COTIZADOR[2]    = { PUESTO_COTIZACION, PUESTO_ENTREGA };
 
 /* Puestos que un mecánico puede tomar, en orden de preferencia. */
 static const int PUESTOS_MECANICO[2] = { PUESTO_DIAGNOSTICO, PUESTO_REPARACION };
@@ -46,15 +56,34 @@ static const int PUESTOS_MECANICO[2] = { PUESTO_DIAGNOSTICO, PUESTO_REPARACION }
 /* Economía: valores por defecto                                        */
 /* ------------------------------------------------------------------ */
 
-#define PRECIO_BASE_TIPO   { 4000, 8500, 14000 }
-#define COSTE_PIEZA_TIPO   { 1200, 2500, 4000 }
-#define MEDIA_DIAG_TIPO    { 0.5, 0.8, 1.2 }
-#define MEDIA_REP_TIPO     { 2.0, 3.5, 6.0 }
+/* --- Escala de tiempos del juego -------------------------------------
+ *
+ * El juego usa su propia escala, más corta que la del modelo analítico
+ * (notas/03 § 6.1). La razón es práctica: un turno de 9 h de juego dura
+ * unos 9 minutos reales, así que los tiempos de servicio tienen que caber
+ * en ese turno. Con los tiempos del modelo analítico (2 a 6 h de
+ * reparación) un turno de 9 h no daba ni para 5 trabajos, y la cuota de 12
+ * era inalcanzable por construcción.
+ *
+ * La ESTRUCTURA del modelo es la misma (colas, cuello de botella, relaciones
+ * L = λW); lo que cambia es la escala de los tiempos.
+ */
+#define PRECIO_BASE_TIPO   { 6000, 11000, 18000 }
+#define COSTE_PIEZA_TIPO   { 1500, 3000, 5000 }
+#define MEDIA_DIAG_TIPO    { 0.20, 0.30, 0.45 }
+#define MEDIA_REP_TIPO     { 0.80, 1.30, 2.20 }
 
-#define NOMINA_DIARIA        900
-#define ALQUILER_DIARIO     2500
-#define SALDO_INICIAL       8000
-#define PRECIO_LOTE         1500
+#define MEDIA_RECEPCION    0.10
+#define MEDIA_COTIZACION   0.10
+#define MEDIA_ALMACEN      0.10
+#define MEDIA_ENTREGA      0.10
+
+#define NOMINA_DIARIA        2000
+#define ALQUILER_DIARIO     4000
+/* Saldo inicial: cubre alquiler y la nómina de los primeros turnos, para
+ * que el jugador pueda contratar a alguien nada más empezar. */
+#define SALDO_INICIAL      25000
+#define PRECIO_LOTE         2000
 #define PIEZAS_POR_LOTE     10
 #define PLAZO_LOTE_HORAS    24.0
 #define REPUTACION_INICIAL  70
@@ -241,7 +270,7 @@ static int iniciar_trabajo(juego_t *g, int v, int puesto)
 
     switch (puesto) {
         case PUESTO_RECEPCION:
-            duracion = 0.1;
+            duracion = MEDIA_RECEPCION;
             veh->estado = V_EN_RECEPCION;
             break;
         case PUESTO_DIAGNOSTICO:
@@ -249,11 +278,11 @@ static int iniciar_trabajo(juego_t *g, int v, int puesto)
             veh->estado = V_EN_DIAGNOSTICO;
             break;
         case PUESTO_COTIZACION:
-            duracion = 0.2;
+            duracion = MEDIA_COTIZACION;
             veh->estado = V_EN_COTIZACION;
             break;
         case PUESTO_ALMACEN:
-            duracion = 0.1;
+            duracion = MEDIA_ALMACEN;
             veh->estado = V_EN_ALMACEN;
             break;
         case PUESTO_REPARACION:
@@ -261,7 +290,7 @@ static int iniciar_trabajo(juego_t *g, int v, int puesto)
             veh->estado = V_EN_REPARACION;
             break;
         case PUESTO_ENTREGA:
-            duracion = 0.1;
+            duracion = MEDIA_ENTREGA;
             veh->estado = V_EN_ENTREGA;
             break;
         default:
@@ -393,6 +422,7 @@ static void cerrar_dia(juego_t *g)
 {
     dia_juego_t *d;
     int nomina = 0;
+    int dia_siguiente;
     int i;
 
     for (i = 0; i < g->n_empleados; i++) {
@@ -447,8 +477,16 @@ static void cerrar_dia(juego_t *g)
         return;
     }
 
-    /* Empieza el día siguiente. */
-    g->dia_actual++;
+    /* Empieza el día siguiente. Se guarda el número del día nuevo ANTES de
+     * incrementarlo, porque las horas de apertura se calculan a partir de
+     * él. Con el orden anterior, `dia_actual - 1` pointed al día ya
+     * cerrado: el cierre se reagendaba en el pasado y el taller quedaba
+     * sin cerrar los días siguientes. */
+    dia_siguiente = g->dia_actual + 1;
+    g->dia_actual = dia_siguiente;
+    /* Los contadores del día se reinician, pero sus valores ya están en el
+     * historial. OJO: el reinicio NO puede ocurrir antes de guardar el
+     * parte, o el día cerrado aparecería con cero entregas. */
     g->entregas_dia = 0;
     g->perdidos_dia = 0;
     g->ingresos_dia_int = 0;
@@ -459,7 +497,7 @@ static void cerrar_dia(juego_t *g)
     /* Al abrir el día nuevo hay clientes esperando, y se agenda la
      * siguiente llegada. */
     {
-        double inicio = (double)(g->dia_actual - 1) * 24.0 + HORA_APERTURA;
+        double inicio = (double)(dia_siguiente - 1) * 24.0 + HORA_APERTURA;
         generar_llegada(g);
         cola_push(&g->eventos, inicio, EV_LLEGADA, -1);
         cola_push(&g->eventos, inicio + HORAS_ATENCION, EV_FIN_DIA, -1);
@@ -470,20 +508,39 @@ static void cerrar_dia(juego_t *g)
 /* NPCs: la IA que ocupa los puestos                                    */
 /* ------------------------------------------------------------------ */
 
-/* Elige el puesto que un empleado debería atender ahora, o -1. */
+/* Elige el puesto que un empleado debería atender ahora, o -1.
+ *
+ * Para el mecánico, que puede trabajar en diagnóstico o en reparación, se
+ * aplica la regla de **cola más corta**: se va al puesto con menos trabajo
+ * pendiente (de los que no están saturados).
+ *
+ * No se usa "el que más cola tiene": con esa regla el mecánico se quedaba
+ * siempre en el diagnóstico —su cola siempre era la más larga— y la
+ * reparación nunca recibía a nadie. La cola de reparación crecía sin
+ * freno y el taller no entregaba nada. Es inanición de cola, y se nota en
+ * cuanto se mira el reparto de trabajo.
+ */
 static int elegir_puesto_empleado(const juego_t *g, int tipo_empleado)
 {
     int mejor = -1;
-    int mejor_cola = 0;
+    double mejor_espera = -1.0;
     int i;
 
     if (tipo_empleado == EMPLEADO_MECANICO) {
-        /* Un mecánico va primero a诊断 y luego a reparación. */
         for (i = 0; i < 2; i++) {
             int p = PUESTOS_MECANICO[i];
-            int pendientes = fifo_pending(&g->cola[p]);
-            if (pendientes > mejor_cola && !puesto_saturado(g, p)) {
-                mejor_cola = pendientes;
+            int cabeza;
+            double espera;
+            if (puesto_saturado(g, p)) continue;
+            cabeza = fifo_frente(&g->cola[p]);
+            if (cabeza < 0) continue;
+            /* Se atiende primero a quien mas ha esperado. Con la regla
+             * contraria (la cola mas larga) una de las dos colas se queda
+             * sin gente para siempre: los dos mecánicos se iban siempre al
+             * diagnóstico y la reparación no recibía a nadie. */
+            espera = g->t_actual - g->vehiculos[cabeza].t_inicio_espera;
+            if (espera > mejor_espera) {
+                mejor_espera = espera;
                 mejor = p;
             }
         }
@@ -491,9 +548,39 @@ static int elegir_puesto_empleado(const juego_t *g, int tipo_empleado)
     }
 
     {
-        int p = PUESTOS_DE_EMPLEADO[tipo_empleado];
-        if (puesto_saturado(g, p)) return -1;
-        return fifo_vacia(&g->cola[p]) ? -1 : p;
+        const int *alternativos = NULL;
+        int n_alternativos = 1;
+        int j;
+
+        switch (tipo_empleado) {
+            case EMPLEADO_RECEPCIONISTA:
+                alternativos = PUESTOS_ALT_RECEPCIONISTA; n_alternativos = 2; break;
+            case EMPLEADO_COTIZADOR:
+                alternativos = PUESTOS_ALT_COTIZADOR;    n_alternativos = 2; break;
+            default:
+                /* El puesto propio del tipo de empleado. OJO: hay que
+                 * desplazar por el índice del tipo; con el array entero
+                 * todos los empleados elegían el puesto del primero
+                 * (recepción) y el almacén nunca recibía a nadie. */
+                alternativos = PUESTOS_DE_EMPLEADO + tipo_empleado;
+                n_alternativos = 1;
+                break;
+        }
+
+        for (j = 0; j < n_alternativos; j++) {
+            int p = alternativos[j];
+            int cabeza;
+            double espera;
+            if (puesto_saturado(g, p)) continue;
+            cabeza = fifo_frente(&g->cola[p]);
+            if (cabeza < 0) continue;
+            espera = g->t_actual - g->vehiculos[cabeza].t_inicio_espera;
+            if (espera > mejor_espera) {
+                mejor_espera = espera;
+                mejor = p;
+            }
+        }
+        return mejor;
     }
 }
 
@@ -501,6 +588,7 @@ static int elegir_puesto_empleado(const juego_t *g, int tipo_empleado)
 static void trabajar_empleados(juego_t *g)
 {
     int i;
+    { extern int g_tb_calls; g_tb_calls++; }
     for (i = 0; i < g->n_empleados; i++) {
         empleado_t *e = &g->empleados[i];
         int puesto;
@@ -509,6 +597,8 @@ static void trabajar_empleados(juego_t *g)
         if (e->ocupado) continue;
 
         puesto = elegir_puesto_empleado(g, e->tipo);
+        { extern int g_tb_calls; extern int g_tb_none; if (puesto < 0) g_tb_none++;
+          else fprintf(stderr,"    [emp %d tipo %d] -> puesto %d\n", e->id, e->tipo, puesto); }
         if (puesto < 0) continue;
 
         /* Si el jugador está en ese puesto, el NPC espera. */
@@ -523,13 +613,14 @@ static void trabajar_empleados(juego_t *g)
         g->vehiculos[v].t_inicio_espera = g->t_actual;
 
         if (puesto == PUESTO_COTIZACION) {
-            /* El NPC cotiza al precio justo y el cliente decide en breve. */
+            /* El NPC cotiza al precio justo y el cliente decide en breve.
+             * El vehículo pasa por el estado "en cotización" y el puesto
+             * queda ocupado mientras tanto, como en cualquier otro. */
+            g->vehiculos[v].estado = V_EN_COTIZACION;
             g->vehiculos[v].precio_ofrecido = precio_tipo(g->vehiculos[v].tipo);
             g->vehiculos[v].espera_cotizar = 1;
-            cola_push(&g->eventos, g->t_actual + 0.2, EV_DECISION_CLIENTE, v);
-            e->ocupado = 0;
-            e->vehiculo = -1;
-            e->puesto_actual = -1;
+            ocupar_puesto(g, puesto);
+            cola_push(&g->eventos, g->t_actual + MEDIA_COTIZACION, EV_FIN_COTIZACION, v);
             continue;
         }
         iniciar_trabajo(g, v, puesto);
@@ -593,11 +684,13 @@ static void procesar_evento(juego_t *g, const evento_t *ev)
         int p = PUESTO_COTIZACION;
         liberar_puesto(g, p);
         liberar_trabajador(g, v);
-        /* El precio lo pone el jugador (o el NPC, si atiende él). */
+        /* El precio lo puso el jugador o el NPC. Si nadie lo puso (por
+         * ejemplo, si el puesto se liberó de otra forma), se usa el justo. */
         if (g->vehiculos[v].precio_ofrecido <= 0) {
             g->vehiculos[v].precio_ofrecido = precio_tipo(g->vehiculos[v].tipo);
         }
         g->vehiculos[v].espera_cotizar = 1;
+        /* El cliente tarda un poco en decidir. */
         cola_push(&g->eventos, g->t_actual + 0.2, EV_DECISION_CLIENTE, v);
         break;
     }
@@ -629,11 +722,18 @@ static void procesar_evento(juego_t *g, const evento_t *ev)
         if (g->stock_refacciones >= necesarias) {
             g->stock_refacciones -= necesarias;
             g->vehiculos[v].piezas_gastadas = necesarias;
-            g->gastos_dia_int += coste_pieza(g->vehiculos[v].tipo);
+            /* El coste de la pieza NO se imputa aquí: se imputa al entregar
+             * el trabajo. Si se cargara al tomar la pieza, un día en el que
+             * se empieza mucho trabajo pero no se entrega nada dejaría al
+             * taller sin caja, y la partida sería imposible de Sobrevivir
+             * por un mal día. */
             encolar(g, v, PUESTO_REPARACION, V_ESPERA_REPARACION);
         } else {
-            /* No hay piezas: vuelve a esperar en almacén. */
+            /* No hay piezas: vuelve a esperar en almacén. La espera se
+             * reinicia, porque si no el puesto de almacén parecería el más
+             * antigo y se llevaría siempre a todos los empleados. */
             g->vehiculos[v].estado = V_ESPERA_ALMACEN;
+            g->vehiculos[v].t_inicio_espera = g->t_actual;
             fifo_push(&g->cola[PUESTO_ALMACEN], v);
         }
         break;
@@ -663,6 +763,12 @@ static void procesar_evento(juego_t *g, const evento_t *ev)
         g->saldo += precio;
         g->ingresos_dia_int += precio;
         g->ingresos_totales += precio;
+        /* Imputa el coste del material usado en este trabajo. */
+        {
+            int coste = coste_pieza(g->vehiculos[v].tipo);
+            g->gastos_dia_int += coste;
+            g->saldo -= coste;
+        }
         g->entregas_dia++;
         g->reputacion += 2;
         if (g->reputacion > 100) g->reputacion = 100;
@@ -706,12 +812,20 @@ void juego_avanzar(juego_t *g, double dt_horas)
 
     objetivo = g->t_actual + dt_horas;
 
-    while (!g->terminada && cola_pop(&g->eventos, &ev)) {
+    while (!g->terminada && cola_frente(&g->eventos, &ev)) {
         if (ev.t > objetivo) {
-            /* El evento es futuro: se vuelve a encolar y se sale. */
-            cola_push(&g->eventos, ev.t, ev.tipo, ev.indice);
+            /* El evento más próximo está en el futuro: se sale sin sacarlo.
+             *
+             * Antes se sacaba y se volvía a encolar, y eso duplicaba
+             * el cierre de día: el EV_FIN_DIA ya agendado se re-encolaba
+             * (con un orden nuevo) *y* cerrar_dia() agendaba otro, así que
+             * la nómina se cobraba dos veces por jornada y el taller
+             * quebraba el primer día. Con `cola_frente` el evento se
+             * consulta sin tocar la cola.
+             */
             break;
         }
+        cola_pop(&g->eventos, &ev);
         g->t_actual = ev.t;
         procesar_evento(g, &ev);
 
@@ -820,7 +934,16 @@ int juego_accion_contratar(juego_t *g, int tipo)
     empleado_t *e;
     if (tipo < 0 || tipo >= EMPLEADO_N_TIPOS) return 0;
     if (g->n_empleados >= JUEGO_MAX_EMPLEADOS) return 0;
+    /* No se puede contratar sin dinero para la nómina del día. */
     if (g->saldo < NOMINA_DIARIA) return 0;
+    /* Ni se pueden recibir másnomina de la que el taller aguanta: con el
+     * saldo justo, contratar de más llevaría a la quiebra segura. */
+    {
+        int nomina_actual = g->n_empleados * NOMINA_DIARIA;
+        if (nomina_actual + NOMINA_DIARIA + ALQUILER_DIARIO > g->saldo) {
+            return 0;
+        }
+    }
 
     e = &g->empleados[g->n_empleados++];
     memset(e, 0, sizeof(*e));

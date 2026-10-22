@@ -240,7 +240,7 @@ static void prueba_economia(void)
 
     /* Pedir un lote sí cuesta dinero ya. */
     AFIRMAR(juego_accion_pedir_lote(&g) == 1, "no se pudo pedir el lote");
-    AFIRMAR(g.saldo == saldo_inicial - 1500, "el lote no costó lo esperado");
+    AFIRMAR(g.saldo == saldo_inicial - 2000, "el lote no costó lo esperado");
     AFIRMAR(g.lote_en_camino == 10, "no se registró el lote en camino");
 
     /* No se puede pedir un segundo lote mientras hay uno en camino. */

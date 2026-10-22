@@ -23,3 +23,6 @@ Thumbs.db
 # Editores
 .vscode/
 .idea/
+
+# Herramientas de desarrollo (MCP)
+.serena/

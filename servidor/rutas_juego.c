@@ -10,6 +10,7 @@
 #include "rutas_juego.h"
 #include "http.h"
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +28,13 @@
 static juego_t partida;
 static int partida_activa = 0;
 static struct timeval ultimo_tick;
+
+/* El servidor HTTP atiende cada conexión en su propio hilo (ver
+ * servidor/main.c), y el cliente del juego hace polling del estado mientras
+ * además manda acciones. Sin este candado, dos hilos tocan `partida` a la
+ * vez y el estado se corrompe: se han visto saldos y reputaciones
+ * imposibles por eso. */
+static pthread_mutex_t candado_partida = PTHREAD_MUTEX_INITIALIZER;
 
 /* Ahora mismo, en segundos (reloj monotónico). */
 static double ahora(void)
@@ -60,7 +68,7 @@ static int responder_json(int fd, cJSON *obj, int codigo)
 
 /* POST /api/partida/iniciar
  * Cuerpo opcional: {"semilla": N, "llegadas_por_dia": N, ...} */
-static int endpoint_iniciar(int fd, const char *cuerpo, size_t longitud)
+static int endpoint_iniciar_interno(int fd, const char *cuerpo, size_t longitud)
 {
     config_t cfg;
     char error[256];
@@ -105,7 +113,7 @@ static int endpoint_iniciar(int fd, const char *cuerpo, size_t longitud)
 
 /* POST /api/partida/accion
  * Cuerpo: {"accion": "atender"|"cotizar"|"pedir_lote"|"contratar", ...} */
-static int endpoint_accion(int fd, const char *cuerpo, size_t longitud)
+static int endpoint_accion_interno(int fd, const char *cuerpo, size_t longitud)
 {
     cJSON *entrada;
     const cJSON *accion;
@@ -168,7 +176,7 @@ static int endpoint_accion(int fd, const char *cuerpo, size_t longitud)
 /* POST /api/partida/avanzar
  * Cuerpo opcional: {"segundos": N}. Si no viene, usa el tiempo real
  * transcurrido desde la última llamada (así el juego corre a ritmo real). */
-static int endpoint_avanzar(int fd, const char *cuerpo, size_t longitud)
+static int endpoint_avanzar_interno(int fd, const char *cuerpo, size_t longitud)
 {
     cJSON *entrada = NULL;
     double segundos = -1.0;
@@ -216,12 +224,56 @@ static int endpoint_avanzar(int fd, const char *cuerpo, size_t longitud)
 }
 
 /* GET /api/partida */
-static int endpoint_estado(int fd)
+static int endpoint_estado_interno(int fd)
 {
     if (!partida_activa) {
         return http_responder_error(fd, 409, "no hay ninguna partida en curso");
     }
     return responder_json(fd, juego_a_json(&partida), 200);
+}
+
+/* ------------------------------------------------------------------ */
+/* Envolventes con candado                                            */
+/*                                                                     */
+/* Cada endpoint toma el candado de la partida antes de tocarla. Sin   */
+/* esto, el polling del cliente y una acción del jugador pueden        */
+/* ejecutarse a la vez sobre el mismo estado y corromperlo.            */
+/* ------------------------------------------------------------------ */
+
+static int endpoint_iniciar(int fd, const char *cuerpo, size_t longitud)
+{
+    int rc;
+    pthread_mutex_lock(&candado_partida);
+    rc = endpoint_iniciar_interno(fd, cuerpo, longitud);
+    pthread_mutex_unlock(&candado_partida);
+    return rc;
+}
+
+static int endpoint_accion(int fd, const char *cuerpo, size_t longitud)
+{
+    int rc;
+    pthread_mutex_lock(&candado_partida);
+    rc = endpoint_accion_interno(fd, cuerpo, longitud);
+    pthread_mutex_unlock(&candado_partida);
+    return rc;
+}
+
+static int endpoint_avanzar(int fd, const char *cuerpo, size_t longitud)
+{
+    int rc;
+    pthread_mutex_lock(&candado_partida);
+    rc = endpoint_avanzar_interno(fd, cuerpo, longitud);
+    pthread_mutex_unlock(&candado_partida);
+    return rc;
+}
+
+static int endpoint_estado(int fd)
+{
+    int rc;
+    pthread_mutex_lock(&candado_partida);
+    rc = endpoint_estado_interno(fd);
+    pthread_mutex_unlock(&candado_partida);
+    return rc;
 }
 
 /* ------------------------------------------------------------------ */
