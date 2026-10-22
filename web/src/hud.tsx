@@ -673,8 +673,9 @@ export function Hud({
         </div>
       )}
 
-      {/* Parte del día */}
-      {parteVisible && (
+      {/* Parte del día. No se muestra si la partida ya terminó: la
+          pantalla final va por encima y se solapaban. */}
+      {parteVisible && estado.terminada === 0 && (
         <div className="pointer-events-auto">
           <ParteDelDia estado={parteVisible} onCerrar={cerrarParte} />
         </div>
